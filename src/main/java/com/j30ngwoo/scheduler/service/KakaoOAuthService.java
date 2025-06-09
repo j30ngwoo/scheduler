@@ -1,0 +1,76 @@
+package com.j30ngwoo.scheduler.service;
+
+import com.j30ngwoo.scheduler.common.exception.AppException;
+import com.j30ngwoo.scheduler.common.exception.ErrorCode;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestClient;
+
+import java.util.Map;
+
+@Service
+@RequiredArgsConstructor
+public class KakaoOAuthService {
+    private final RestClient restClient;
+
+    @Value("${auth.kakao.client-id}")
+    private String clientId;
+
+    @Value("${auth.kakao.client-secret}")
+    private String clientSecret;
+
+    @Value("${auth.kakao.redirect-uri}")
+    private String redirectUri;
+
+    public String getAccessToken(String code) {
+        String url = "https://kauth.kakao.com/oauth/token";
+
+        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+        params.add("grant_type", "authorization_code");
+        params.add("client_id", clientId);
+        params.add("code", code);
+        params.add("redirect_uri", redirectUri);
+        params.add("client_secret", clientSecret);
+
+        Map<String, Object> body = restClient.post()
+                .uri(url)
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(params)
+                .retrieve()
+                .body(Map.class);
+
+        if (body == null || !body.containsKey("access_token")) {
+            throw new AppException(ErrorCode.OAUTH_COMMUNICATION_FAILED);
+        }
+
+        return (String) body.get("access_token");
+    }
+
+    public KakaoUser getUserInfo(String accessToken) {
+        String url = "https://kapi.kakao.com/v2/user/me";
+
+        Map<String, Object> body = restClient.get()
+                .uri(url)
+                .headers(headers -> {
+                    headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+                    headers.setBearerAuth(accessToken);
+                })
+                .retrieve()
+                .body(Map.class);
+
+        if (body == null || !body.containsKey("id")) {
+            throw new AppException(ErrorCode.OAUTH_COMMUNICATION_FAILED);
+        }
+
+        Long id = ((Number) body.get("id")).longValue();
+        String nickname = ((Map<String, Object>) body.get("properties")).get("nickname").toString();
+
+        return new KakaoUser(id, nickname);
+    }
+
+    public record KakaoUser(Long kakaoId, String nickname) {}
+}
