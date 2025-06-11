@@ -8,6 +8,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"schedule_id", "nickname"}))
 public class Availability {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -17,7 +18,7 @@ public class Availability {
     private String participantName;
 
     @Column(nullable = false)
-    private String availabilityBits; // 0/1 문자열
+    private String availabilityBits; // 0/1 문자열, 1시간 단위
 
     @ManyToOne(optional = false)
     private Schedule schedule;

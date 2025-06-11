@@ -17,6 +17,6 @@ public class AppException extends RuntimeException {
     }
 
     public String getCode() {
-        return errorCode.getCode();
+        return errorCode.name();
     }
 }
