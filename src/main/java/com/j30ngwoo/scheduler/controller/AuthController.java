@@ -2,9 +2,8 @@ package com.j30ngwoo.scheduler.controller;
 
 import com.j30ngwoo.scheduler.domain.User;
 import com.j30ngwoo.scheduler.repository.UserRepository;
-import com.j30ngwoo.scheduler.service.JwtProvider;
+import com.j30ngwoo.scheduler.service.AuthService;
 import com.j30ngwoo.scheduler.service.KakaoOAuthService;
-import com.j30ngwoo.scheduler.service.RefreshTokenService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -30,9 +29,8 @@ public class AuthController {
     private String redirectUri;
 
     private final KakaoOAuthService kakaoOAuthService;
-    private final JwtProvider jwtProvider;
     private final UserRepository userRepository;
-    private final RefreshTokenService refreshTokenService;
+    private final AuthService authService;
 
     @GetMapping("/kakao/login")
     public ResponseEntity<Void> redirectToKakao() {
@@ -54,23 +52,22 @@ public class AuthController {
 
     @GetMapping("/kakao/callback")
     public ResponseEntity<?> kakaoLogin(@RequestParam String code) {
-        String accessTokenFromKakao = kakaoOAuthService.getAccessToken(code);
-        KakaoOAuthService.KakaoUser kakaoUser = kakaoOAuthService.getUserInfo(accessTokenFromKakao);
+        String accessTokenFromKakao = kakaoOAuthService.getKakaoAccessToken(code);
+        KakaoOAuthService.KakaoUser kakaoUser = kakaoOAuthService.getKakaoUserInfo(accessTokenFromKakao);
 
         User user = userRepository.findByKakaoId(kakaoUser.kakaoId())
                 .orElseGet(() -> userRepository.save(
                         new User(null, kakaoUser.kakaoId(), kakaoUser.nickname())
                 ));
 
-        String accessToken = jwtProvider.createAccessToken(user.getId());
-        String refreshToken = refreshTokenService.generateRefreshToken(user.getId());
+        String accessToken = authService.createAccessToken(user.getId());
 
-        // HttpOnly 쿠키로 리프레시 토큰 저장
+        String refreshToken = authService.createRefreshToken(user.getId());
         ResponseCookie refreshCookie = ResponseCookie.from("refreshToken", refreshToken)
                 .httpOnly(true)
-                .secure(true) // HTTPS 환경에서만 설정
+                .secure(true) // HTTPS
                 .path("/")
-                .maxAge(Duration.ofDays(14))
+                .maxAge(Duration.ofDays(30))
                 .sameSite("Strict")
                 .build();
 
@@ -87,11 +84,7 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        return refreshTokenService.validateAndGetUserId(refreshToken)
-                .map(userId -> {
-                    String newAccessToken = jwtProvider.createAccessToken(userId);
-                    return ResponseEntity.ok(Map.of("accessToken", newAccessToken));
-                })
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
+        String newAccessToken = authService.refreshAccessToken(refreshToken);
+        return ResponseEntity.ok(Map.of("accessToken", newAccessToken));
     }
 }

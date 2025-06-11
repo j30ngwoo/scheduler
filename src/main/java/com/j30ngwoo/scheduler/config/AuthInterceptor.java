@@ -4,7 +4,7 @@ import com.j30ngwoo.scheduler.common.exception.AppException;
 import com.j30ngwoo.scheduler.common.exception.ErrorCode;
 import com.j30ngwoo.scheduler.domain.User;
 import com.j30ngwoo.scheduler.repository.UserRepository;
-import com.j30ngwoo.scheduler.service.JwtProvider;
+import com.j30ngwoo.scheduler.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -12,13 +12,11 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
-import java.util.Optional;
-
 @Component
 @RequiredArgsConstructor
 public class AuthInterceptor implements HandlerInterceptor {
 
-    private final JwtProvider jwtProvider;
+    private final AuthService authService;
     private final UserRepository userRepository;
 
     @Override
@@ -29,14 +27,12 @@ public class AuthInterceptor implements HandlerInterceptor {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
 
-        String token = authHeader.substring(7);
+        String accessToken = authHeader.substring(7);
         Long userId;
         try {
-            userId = jwtProvider.getUserId(token);
-        } catch (io.jsonwebtoken.ExpiredJwtException e) {
-            throw new AppException(ErrorCode.TOKEN_EXPIRED);
+            userId = authService.parseSubject(accessToken);
         } catch (Exception e) {
-            throw new AppException(ErrorCode.TOKEN_INVALID);
+            throw new AppException(ErrorCode.UNAUTHORIZED);
         }
 
         User user = userRepository.findById(userId)

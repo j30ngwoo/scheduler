@@ -1,16 +1,11 @@
 package com.j30ngwoo.scheduler.common.response;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-
-@Getter
-@AllArgsConstructor
-public class ApiResponse<T> {
-    private final boolean success;
-    private final T data;
-    private final String errorCode;
-    private final String message;
-
+public record ApiResponse<T>(
+        boolean success,
+        T data,
+        String errorCode,
+        String message
+) {
     public static <T> ApiResponse<T> success(T data) {
         return new ApiResponse<>(true, data, null, null);
     }
