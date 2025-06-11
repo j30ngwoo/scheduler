@@ -26,7 +26,7 @@ public class KakaoOAuthService {
     @Value("${auth.kakao.redirect-uri}")
     private String redirectUri;
 
-    public String getAccessToken(String code) {
+    public String getKakaoAccessToken(String code) {
         String url = "https://kauth.kakao.com/oauth/token";
 
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
@@ -50,7 +50,7 @@ public class KakaoOAuthService {
         return (String) body.get("access_token");
     }
 
-    public KakaoUser getUserInfo(String accessToken) {
+    public KakaoUser getKakaoUserInfo(String accessToken) {
         String url = "https://kapi.kakao.com/v2/user/me";
 
         Map<String, Object> body = restClient.get()

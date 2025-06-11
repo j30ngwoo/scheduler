@@ -24,7 +24,6 @@ public class Schedule {
     @Column(nullable = false)
     private String title;
 
-
     @Column(nullable = false)
     private LocalTime startTime; // hh:mm
 
@@ -34,7 +33,10 @@ public class Schedule {
     @ManyToOne(optional = false)
     private User owner;
 
-    @OneToMany(mappedBy = "weekSchedule", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Column(nullable = false)
+    private Integer maxHoursPerParticipant;
+
+    @OneToMany(mappedBy = "schedule", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Availability> availabilities = new ArrayList<>();
 
     @PrePersist
