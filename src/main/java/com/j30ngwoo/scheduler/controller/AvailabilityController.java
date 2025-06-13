@@ -18,12 +18,11 @@ public class AvailabilityController {
     private final AvailabilityService availabilityService;
 
     @PostMapping
-    public ApiResponse<Void> submit(
+    public ApiResponse<Availability> submit(
             @PathVariable String code,
             @RequestBody @Valid AvailabilitySubmitRequest request
     ) {
-        Availability availability = availabilityService.submitAvailability(code, request);
-        return ApiResponse.success(null);
+        return ApiResponse.success(availabilityService.submitAvailability(code, request));
     }
 
     @GetMapping

@@ -1,6 +1,5 @@
 package com.j30ngwoo.scheduler.controller;
 
-import com.j30ngwoo.scheduler.domain.User;
 import com.j30ngwoo.scheduler.repository.UserRepository;
 import com.j30ngwoo.scheduler.service.AuthService;
 import com.j30ngwoo.scheduler.service.KakaoOAuthService;
@@ -8,13 +7,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
-import java.time.Duration;
 import java.util.Map;
 
 @RestController
@@ -29,7 +26,6 @@ public class AuthController {
     private String redirectUri;
 
     private final KakaoOAuthService kakaoOAuthService;
-    private final UserRepository userRepository;
     private final AuthService authService;
 
     @GetMapping("/kakao/login")
@@ -52,28 +48,10 @@ public class AuthController {
 
     @GetMapping("/kakao/callback")
     public ResponseEntity<?> kakaoLogin(@RequestParam String code) {
-        String accessTokenFromKakao = kakaoOAuthService.getKakaoAccessToken(code);
-        KakaoOAuthService.KakaoUser kakaoUser = kakaoOAuthService.getKakaoUserInfo(accessTokenFromKakao);
-
-        User user = userRepository.findByKakaoId(kakaoUser.kakaoId())
-                .orElseGet(() -> userRepository.save(
-                        new User(null, kakaoUser.kakaoId(), kakaoUser.nickname())
-                ));
-
-        String accessToken = authService.createAccessToken(user.getId());
-
-        String refreshToken = authService.createRefreshToken(user.getId());
-        ResponseCookie refreshCookie = ResponseCookie.from("refreshToken", refreshToken)
-                .httpOnly(true)
-                .secure(true) // HTTPS
-                .path("/")
-                .maxAge(Duration.ofDays(30))
-                .sameSite("Strict")
-                .build();
-
+        KakaoOAuthService.KakaoLoginResponse response = kakaoOAuthService.handleKakaoLoginCallback(code);
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie.toString())
-                .body(Map.of("accessToken", accessToken));
+                .header(HttpHeaders.SET_COOKIE, response.refreshTokenCookie().toString())
+                .body(Map.of("accessToken", response.accessToken()));
     }
 
     @PostMapping("/refresh")

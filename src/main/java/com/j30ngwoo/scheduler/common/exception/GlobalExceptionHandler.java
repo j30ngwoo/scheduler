@@ -2,8 +2,10 @@ package com.j30ngwoo.scheduler.common.exception;
 
 import com.j30ngwoo.scheduler.common.response.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.http.*;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {

@@ -5,7 +5,7 @@ import com.j30ngwoo.scheduler.common.exception.ErrorCode;
 import com.j30ngwoo.scheduler.domain.RefreshToken;
 import com.j30ngwoo.scheduler.repository.RefreshTokenRepository;
 import com.j30ngwoo.scheduler.repository.UserRepository;
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
