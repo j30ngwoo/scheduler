@@ -3,6 +3,7 @@ package com.j30ngwoo.scheduler.service;
 import com.j30ngwoo.scheduler.common.exception.AppException;
 import com.j30ngwoo.scheduler.common.exception.ErrorCode;
 import com.j30ngwoo.scheduler.domain.User;
+import com.j30ngwoo.scheduler.dto.KakaoLoginResponse;
 import com.j30ngwoo.scheduler.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -79,7 +80,7 @@ public class KakaoOAuthService {
         return (String) body.get("access_token");
     }
 
-    public KakaoUser getKakaoUserInfo(String accessToken) {
+    private KakaoUser getKakaoUserInfo(String accessToken) {
         String url = "https://kapi.kakao.com/v2/user/me";
 
         Map<String, Object> body = restClient.get()
@@ -101,6 +102,5 @@ public class KakaoOAuthService {
         return new KakaoUser(id, nickname);
     }
 
-    public record KakaoLoginResponse(String accessToken, ResponseCookie refreshTokenCookie) {}
-    public record KakaoUser(Long kakaoId, String nickname) {}
+    private record KakaoUser(Long kakaoId, String nickname) {}
 }

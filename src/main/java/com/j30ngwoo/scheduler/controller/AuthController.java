@@ -1,6 +1,6 @@
 package com.j30ngwoo.scheduler.controller;
 
-import com.j30ngwoo.scheduler.repository.UserRepository;
+import com.j30ngwoo.scheduler.dto.KakaoLoginResponse;
 import com.j30ngwoo.scheduler.service.AuthService;
 import com.j30ngwoo.scheduler.service.KakaoOAuthService;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +48,7 @@ public class AuthController {
 
     @GetMapping("/kakao/callback")
     public ResponseEntity<?> kakaoLogin(@RequestParam String code) {
-        KakaoOAuthService.KakaoLoginResponse response = kakaoOAuthService.handleKakaoLoginCallback(code);
+        KakaoLoginResponse response = kakaoOAuthService.handleKakaoLoginCallback(code);
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, response.refreshTokenCookie().toString())
                 .body(Map.of("accessToken", response.accessToken()));
