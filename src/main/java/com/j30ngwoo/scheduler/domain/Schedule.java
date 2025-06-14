@@ -33,7 +33,6 @@ public class Schedule {
     @ManyToOne(optional = false)
     private User owner;
 
-    @Column(nullable = false)
     private Integer maxHoursPerParticipant;
 
     @OneToMany(mappedBy = "schedule", cascade = CascadeType.ALL, orphanRemoval = true)
