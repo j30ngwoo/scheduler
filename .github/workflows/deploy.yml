@@ -19,7 +19,7 @@ jobs:
           java-version: '21'
 
       - name: Build JAR File
-        run: mvn clean package -DskipTests
+        run: ./gradlew clean build -x test
 
       - name: Load .env and export variables
         run: |
