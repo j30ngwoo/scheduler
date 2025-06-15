@@ -47,11 +47,14 @@ public class AuthController {
     }
 
     @GetMapping("/kakao/callback")
-    public ResponseEntity<?> kakaoLogin(@RequestParam String code) {
+    public ResponseEntity<Void> kakaoLogin(@RequestParam String code) {
         KakaoLoginResponse response = kakaoOAuthService.handleKakaoLoginCallback(code);
-        return ResponseEntity.ok()
+        
+        String frontendCallback = "https://scheduler.j30ngwoo.site/login/callback?accessToken=" + response.accessToken();
+        return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.SET_COOKIE, response.refreshTokenCookie().toString())
-                .body(Map.of("accessToken", response.accessToken()));
+                .location(URI.create(frontendCallback))
+                .build();
     }
 
     @PostMapping("/refresh")
