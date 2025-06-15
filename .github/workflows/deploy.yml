@@ -85,7 +85,7 @@ jobs:
             docker image prune -f || true
 
             docker run -d \
-              -p 9003:9000 \
+              -p 9003:8080 \
               --name scheduler-container \
               --env-file .env \
               scheduler:latest
