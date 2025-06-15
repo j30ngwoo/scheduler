@@ -1,6 +1,6 @@
 FROM eclipse-temurin:21-jre-alpine
 
-ARG JAR_FILE=target/scheduler-0.0.1.jar
+ARG JAR_FILE=build/libs/scheduler-0.0.1-SNAPSHOT.jar
 
 COPY ${JAR_FILE} app.jar
 
