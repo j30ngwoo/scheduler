@@ -19,7 +19,9 @@ jobs:
           java-version: '21'
 
       - name: Build JAR File
-        run: ./gradlew clean build -x test
+        run: |
+          chmod +x ./gradlew
+          ./gradlew clean build -x test
 
       - name: Load .env and export variables
         run: |
