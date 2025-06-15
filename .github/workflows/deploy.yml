@@ -1,0 +1,81 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Build JAR File
+        run: mvn clean package -DskipTests
+
+      - name: Load .env and export variables
+        run: |
+          echo "${{ secrets.ENV_FILE }}" > .env
+          source .env
+          echo "SSH_HOST=$SSH_HOST" >> $GITHUB_ENV
+          echo "SSH_PORT=$SSH_PORT" >> $GITHUB_ENV
+          echo "SSH_USER=$SSH_USER" >> $GITHUB_ENV
+          echo "${{ secrets.SSH_KEY }}" > private_key
+          chmod 600 private_key
+
+      - name: Build Docker image
+        run: docker build -t scheduler:latest .
+
+      - name: Save Docker image to tar
+        run: docker save scheduler:latest -o scheduler.tar
+
+      - name: Install rsync (if needed)
+        run: sudo apt-get update && sudo apt-get install -y rsync
+
+      - name: Add SSH host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p $SSH_PORT $SSH_HOST >> ~/.ssh/known_hosts
+        env:
+          SSH_HOST: ${{ env.SSH_HOST }}
+          SSH_PORT: ${{ env.SSH_PORT }}
+
+      - name: Transfer Docker image via rsync
+        run: |
+          rsync -avz -e "ssh -i private_key -p $SSH_PORT" scheduler.tar $SSH_USER@$SSH_HOST:~/
+        env:
+          SSH_HOST: ${{ env.SSH_HOST }}
+          SSH_PORT: ${{ env.SSH_PORT }}
+          SSH_USER: ${{ env.SSH_USER }}
+
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ env.SSH_HOST }}
+          port: ${{ env.SSH_PORT }}
+          username: ${{ env.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            echo "${{ secrets.ENV_FILE }}" > .env
+
+            docker load -i ~/scheduler.tar
+
+            docker stop scheduler-container || true
+            docker rm scheduler-container || true
+            docker image prune -f || true
+
+            docker run -d \
+              -p 9003:9000 \
+              --name scheduler-container \
+              --env-file .env \
+              scheduler:latest
+
+            rm -f ~/scheduler.tar .env
