@@ -79,10 +79,9 @@ public class KakaoOAuthService {
             }
 
             return (String) body.get("access_token");
-
-
         } catch (Exception e) {
             e.printStackTrace();
+            throw new AppException(ErrorCode.OAUTH_COMMUNICATION_FAILED);
         }
     }
 
