@@ -102,5 +102,18 @@ public class KakaoOAuthService {
         return new KakaoUser(id, nickname);
     }
 
+
+    public void kakaoLogout(String kakaoAccessToken) {
+        String url = "https://kapi.kakao.com/v1/user/logout";
+        restClient.post()
+                .uri(url)
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .headers(headers -> {
+                    headers.setBearerAuth(kakaoAccessToken);
+                })
+                .retrieve()
+                .body(Map.class);
+    }
+
     private record KakaoUser(Long kakaoId, String nickname) {}
 }

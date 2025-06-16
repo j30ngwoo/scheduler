@@ -1,5 +1,7 @@
 package com.j30ngwoo.scheduler.controller;
 
+import com.j30ngwoo.scheduler.config.resolver.CurrentUser;
+import com.j30ngwoo.scheduler.domain.User;
 import com.j30ngwoo.scheduler.dto.KakaoLoginResponse;
 import com.j30ngwoo.scheduler.service.AuthService;
 import com.j30ngwoo.scheduler.service.KakaoOAuthService;
@@ -7,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -66,5 +69,37 @@ public class AuthController {
 
         String newAccessToken = authService.refreshAccessToken(refreshToken);
         return ResponseEntity.ok(Map.of("accessToken", newAccessToken));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(
+            @CurrentUser User currentUser,
+            @RequestHeader("Authorization") String authorization,
+            @CookieValue(value = "refreshToken", required = false) String refreshToken
+    ) {
+        if (refreshToken != null) {
+            authService.deleteRefreshToken(refreshToken);
+        }
+
+        if (authorization != null && authorization.startsWith("Bearer ")) {
+            String kakaoAccessToken = authorization.substring("Bearer ".length());
+            try {
+                kakaoOAuthService.kakaoLogout(kakaoAccessToken);
+            } catch (Exception e) {
+                // 실패해도 무시 (이미 만료일 수도 있음)
+            }
+        }
+
+        ResponseCookie removeCookie = ResponseCookie.from("refreshToken", "")
+                .path("/")
+                .maxAge(0)
+                .httpOnly(true)
+                .secure(true)
+                .sameSite("Strict")
+                .build();
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, removeCookie.toString())
+                .body(Map.of("message", "로그아웃 완료"));
     }
 }
