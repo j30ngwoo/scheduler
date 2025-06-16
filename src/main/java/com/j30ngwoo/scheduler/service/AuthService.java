@@ -61,14 +61,15 @@ public class AuthService {
         String token = UUID.randomUUID().toString();
         LocalDateTime expiry = LocalDateTime.now().plusDays(30);
 
-        RefreshToken newRefreshToken = RefreshToken.builder()
-                .user(userRepository.getReferenceById(userId))
-                .token(token)
-                .expiresAt(expiry)
-                .build();
+        RefreshToken refreshToken = refreshTokenRepository.findById(userId)
+                .orElse(RefreshToken.builder()
+                        .user(userRepository.getReferenceById(userId))
+                        .build());
 
-        return refreshTokenRepository.save(newRefreshToken)
-                .getToken();
+        refreshToken.setToken(token);
+        refreshToken.setExpiresAt(expiry);
+
+        return refreshTokenRepository.save(refreshToken).getToken();
     }
 
     public String refreshAccessToken(String refreshToken) {
