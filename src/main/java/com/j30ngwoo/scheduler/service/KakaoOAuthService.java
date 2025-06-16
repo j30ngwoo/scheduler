@@ -66,13 +66,15 @@ public class KakaoOAuthService {
         params.add("redirect_uri", redirectUri);
         params.add("client_secret", clientSecret);
 
-        try { // 디버깅 try-catch
+        try { // DEBUG
             Map<String, Object> body = restClient.post()
                     .uri(url)
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .body(params)
                     .retrieve()
                     .body(Map.class);
+
+            System.out.println("카카오 토큰 응답 body: " + body); // DEBUG
 
             if (body == null || !body.containsKey("access_token")) {
                 throw new AppException(ErrorCode.OAUTH_COMMUNICATION_FAILED);
