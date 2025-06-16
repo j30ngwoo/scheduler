@@ -52,7 +52,7 @@ public class AuthController {
     public ResponseEntity<Void> kakaoLogin(@RequestParam String code) {
         KakaoLoginResponse response = kakaoOAuthService.handleKakaoLoginCallback(code);
         
-        String frontendCallback = "https://scheduler.j30ngwoo.site/login/callback?accessToken=" + response.accessToken();
+        String frontendCallback = "http://scheduler.j30ngwoo.site/login/callback?accessToken=" + response.accessToken();
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.SET_COOKIE, response.refreshTokenCookie().toString())
                 .location(URI.create(frontendCallback))
