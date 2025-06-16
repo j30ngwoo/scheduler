@@ -8,7 +8,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"schedule_id", "nickname"}))
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"schedule_id", "participant_name"}))
 public class Availability {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
