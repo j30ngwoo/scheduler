@@ -62,10 +62,9 @@ public class AuthService {
         LocalDateTime expiry = LocalDateTime.now().plusDays(30);
 
         RefreshToken newRefreshToken = RefreshToken.builder()
-                .userId(userId)
+                .user(userRepository.getReferenceById(userId))
                 .token(token)
                 .expiresAt(expiry)
-                .user(userRepository.getReferenceById(userId))
                 .build();
 
         return refreshTokenRepository.save(newRefreshToken)
