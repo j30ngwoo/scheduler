@@ -66,18 +66,24 @@ public class KakaoOAuthService {
         params.add("redirect_uri", redirectUri);
         params.add("client_secret", clientSecret);
 
-        Map<String, Object> body = restClient.post()
-                .uri(url)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(params)
-                .retrieve()
-                .body(Map.class);
+        try { // 디버깅 try-catch
+            Map<String, Object> body = restClient.post()
+                    .uri(url)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(params)
+                    .retrieve()
+                    .body(Map.class);
 
-        if (body == null || !body.containsKey("access_token")) {
-            throw new AppException(ErrorCode.OAUTH_COMMUNICATION_FAILED);
+            if (body == null || !body.containsKey("access_token")) {
+                throw new AppException(ErrorCode.OAUTH_COMMUNICATION_FAILED);
+            }
+
+            return (String) body.get("access_token");
+
+
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        return (String) body.get("access_token");
     }
 
     private KakaoUser getKakaoUserInfo(String accessToken) {
