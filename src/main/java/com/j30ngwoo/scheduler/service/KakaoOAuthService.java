@@ -90,23 +90,30 @@ public class KakaoOAuthService {
     private KakaoUser getKakaoUserInfo(String accessToken) {
         String url = "https://kapi.kakao.com/v2/user/me";
 
-        Map<String, Object> body = restClient.get()
-                .uri(url)
-                .headers(headers -> {
-                    headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-                    headers.setBearerAuth(accessToken);
-                })
-                .retrieve()
-                .body(Map.class);
+        try { // DEBUG
+            Map<String, Object> body = restClient.get()
+                    .uri(url)
+                    .headers(headers -> {
+                        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+                        headers.setBearerAuth(accessToken);
+                    })
+                    .retrieve()
+                    .body(Map.class);
 
-        if (body == null || !body.containsKey("id")) {
+            if (body == null || !body.containsKey("id")) {
+                throw new AppException(ErrorCode.OAUTH_COMMUNICATION_FAILED);
+            }
+
+            Long id = ((Number) body.get("id")).longValue();
+            String nickname = ((Map<String, Object>) body.get("properties")).get("nickname").toString();
+
+            System.out.println("nickname: " + nickname); //DEBUG
+
+            return new KakaoUser(id, nickname);
+        } catch (Exception e) {
+            e.printStackTrace();
             throw new AppException(ErrorCode.OAUTH_COMMUNICATION_FAILED);
         }
-
-        Long id = ((Number) body.get("id")).longValue();
-        String nickname = ((Map<String, Object>) body.get("properties")).get("nickname").toString();
-
-        return new KakaoUser(id, nickname);
     }
 
 
