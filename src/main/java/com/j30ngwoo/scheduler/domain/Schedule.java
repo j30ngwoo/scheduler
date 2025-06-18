@@ -25,10 +25,10 @@ public class Schedule {
     private String title;
 
     @Column(nullable = false)
-    private LocalTime startTime; // hh:mm
+    private Integer startHour; // hh:mm
 
     @Column(nullable = false)
-    private LocalTime endTime; // hh:mm
+    private Integer endHour; // hh:mm
 
     @ManyToOne(optional = false)
     private User owner;

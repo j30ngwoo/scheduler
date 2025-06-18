@@ -18,7 +18,7 @@ public class Availability {
     private String participantName;
 
     @Column(nullable = false)
-    private String availabilityBits; // 0/1 문자열, 1시간 단위
+    private String availabilityBits; // 0/1 문자열, 30분 단위
 
     @ManyToOne(optional = false)
     private Schedule schedule;

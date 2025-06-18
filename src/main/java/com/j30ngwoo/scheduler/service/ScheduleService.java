@@ -20,8 +20,8 @@ public class ScheduleService {
     public Schedule createSchedule(ScheduleCreateRequest request, User owner) {
         Schedule schedule = Schedule.builder()
                 .title(request.title())
-                .startTime(request.startTime())
-                .endTime(request.endTime())
+                .startHour(request.startHour())
+                .endHour(request.endHour())
                 .owner(owner)
                 .maxHoursPerParticipant(request.maxHoursPerParticipant())
                 .build();
