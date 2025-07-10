@@ -22,18 +22,20 @@ public class ScheduleOptimizerService {
     /**
      * 해당 code 스케쥴의 최적 값 게산
      */
-    public List<Assignment> optimize(String code) {
+    public List<Assignment> optimize(
+            String code,
+            boolean considerLectureGap,
+            boolean considerTravelTime
+    ) {
         Schedule schedule = scheduleRepository.findByCode(code)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT_VALUE));
 
-        // 1. 슬롯 생성 (1시간 단위)
         int startHour = schedule.getStartHour();
         int endHour = schedule.getEndHour();
         int hours = endHour - startHour;
         int days = 5;
         int totalSlots = hours * days;
 
-        // 요일(day)별 1시간 단위 slot 리스트 생성
         List<TimeSlot> slots = new ArrayList<>(totalSlots);
         for (int day = 0; day < days; day++) {
             for (int h = 0; h < hours; h++) {
@@ -45,22 +47,51 @@ public class ScheduleOptimizerService {
             }
         }
 
-        // 2. 참가자 정보 수집, priorityMap 계산
         List<Availability> availList = availabilityRepository.findAllBySchedule(schedule);
         int P = availList.size();
         int base = totalSlots / P, extra = totalSlots % P;
 
-        // 2-1. 참가자별 slotBits(1시간 단위 가능/불가), priorityMap 준비
         Map<String, String> slotBitsMap = new HashMap<>();
         Map<String, Map<Integer, Integer>> allPriority = new HashMap<>();
+        Map<String, String> lectureBitsMap = new HashMap<>(); // 30분 단위 bits, 수업 정보
+
+        // --- 우선 slotBits, lectureBits, priorityMap 생성 및 로그 출력 ---
         for (Availability a : availList) {
-            String slotBits = toSlotBits(a.getAvailabilityBits(), days, hours); // <-- 핵심 변환
+            String slotBits = toSlotBits(a.getAvailabilityBits(), days, hours);
+            System.out.println("[" + a.getParticipantName() + "] 1시간 slotBits: " + slotBits);
             slotBitsMap.put(a.getParticipantName(), slotBits);
-            Map<Integer, Integer> pmap = computePriorityBits(slotBits, days, hours);
+
+            lectureBitsMap.put(a.getParticipantName(), a.getAvailabilityBits());
+            Map<Integer, Integer> pmap = computePriorityBits(
+                    slotBits, days, hours, considerLectureGap, considerTravelTime, a.getAvailabilityBits(), startHour
+            );
             allPriority.put(a.getParticipantName(), pmap);
+
+            // --- priorityMap 전체 출력 ---
+            System.out.println("[" + a.getParticipantName() + "] priorityMap:");
+            for (int i = 0; i < totalSlots; i++) {
+                int dayIdx = i / hours;
+                int hour = startHour + (i % hours);
+                System.out.printf("slot %2d (요일 %d, %02d:00) = %4d\n", i, dayIdx, hour, pmap.get(i));
+            }
+
+            // --- segment별 min/max/avg 출력 ---
+            List<Segment> segs = extractSegments(slotBits, days, hours);
+            System.out.print("[" + a.getParticipantName() + "] segments: ");
+            for (Segment s : segs) {
+                int minPri = Integer.MAX_VALUE, maxPri = Integer.MIN_VALUE, sumPri = 0;
+                for (int j = s.start; j < s.start + s.length; j++) {
+                    int p = pmap.get(j);
+                    minPri = Math.min(minPri, p);
+                    maxPri = Math.max(maxPri, p);
+                    sumPri += p;
+                }
+                double avgPri = sumPri / (double) s.length;
+                System.out.printf("[%d~%d] min:%d max:%d avg:%.1f ", s.start, s.start + s.length - 1, minPri, maxPri, avgPri);
+            }
+            System.out.println();
         }
 
-        // 2-2. Participant 객체 생성
         List<Participant> participants = new ArrayList<>();
         for (int i = 0; i < availList.size(); i++) {
             Availability a = availList.get(i);
@@ -68,33 +99,41 @@ public class ScheduleOptimizerService {
                     ? schedule.getMaxHoursPerParticipant()
                     : base + (i < extra ? 1 : 0);
             String slotBits = slotBitsMap.get(a.getParticipantName());
-            List<Segment> segs = extractSegments(slotBits, totalSlots);
             Map<Integer, Integer> pmap = allPriority.get(a.getParticipantName());
+
+            List<Segment> segs = extractSegments(slotBits, days, hours);
             participants.add(new Participant(a.getParticipantName(), slotBits, quota, new LinkedList<>(segs), pmap));
         }
 
-        // 3. 초기 할당: priority+segment 우선
+        // (아래 while~ 등은 기존과 동일)
         String[] assigned = new String[totalSlots];
         Map<String, Integer> assignedCount = new HashMap<>();
 
         PriorityQueue<Participant> pq = new PriorityQueue<>((p1, p2) -> {
-            // 가장 priority 높은 segment 기준 비교
-            int p1Max = p1.segments.stream().flatMapToInt(s ->
-                    java.util.stream.IntStream.range(s.start, s.start + s.length)
-                            .map(idx -> p1.priorityMap.getOrDefault(idx, 0))
-            ).max().orElse(0);
-            int p2Max = p2.segments.stream().flatMapToInt(s ->
-                    java.util.stream.IntStream.range(s.start, s.start + s.length)
-                            .map(idx -> p2.priorityMap.getOrDefault(idx, 0))
-            ).max().orElse(0);
-            if (p1Max != p2Max) return Integer.compare(p2Max, p1Max);
+            int p1BestPri = p1.segments.stream()
+                    .mapToInt(seg -> {
+                        int minPri = Integer.MAX_VALUE;
+                        for (int i = seg.start; i < seg.start + seg.length; i++) {
+                            minPri = Math.min(minPri, p1.priorityMap.getOrDefault(i, 0));
+                        }
+                        return minPri;
+                    }).max().orElse(Integer.MIN_VALUE);
 
-            // 연속성(긴 segment 우선)
+            int p2BestPri = p2.segments.stream()
+                    .mapToInt(seg -> {
+                        int minPri = Integer.MAX_VALUE;
+                        for (int i = seg.start; i < seg.start + seg.length; i++) {
+                            minPri = Math.min(minPri, p2.priorityMap.getOrDefault(i, 0));
+                        }
+                        return minPri;
+                    }).max().orElse(Integer.MIN_VALUE);
+
+            if (p1BestPri != p2BestPri) return Integer.compare(p2BestPri, p1BestPri);
+
             int s1 = p1.segments.isEmpty() ? 0 : p1.segments.peek().length;
             int s2 = p2.segments.isEmpty() ? 0 : p2.segments.peek().length;
             if (s1 != s2) return Integer.compare(s2, s1);
 
-            // quota 채운 비율
             double q1 = (double) assignedCount.getOrDefault(p1.name, 0) / p1.quota;
             double q2 = (double) assignedCount.getOrDefault(p2.name, 0) / p2.quota;
             if (q1 != q2) return Double.compare(q1, q2);
@@ -110,34 +149,77 @@ public class ScheduleOptimizerService {
         while (!pq.isEmpty()) {
             Participant p = pq.poll();
             if (assignedCount.get(p.name) >= p.quota || p.segments.isEmpty()) continue;
-            Segment seg = p.segments.poll();
 
-            // segment 내에서 priority 높은 순으로 배정
-            List<Integer> idxList = new ArrayList<>();
-            for (int i = seg.start; i < seg.start + seg.length; i++) {
-                if (p.bits.charAt(i) == '1' && assigned[i] == null)
-                    idxList.add(i);
-            }
-            idxList.sort(Comparator.comparingInt((Integer idx) -> -p.priorityMap.getOrDefault(idx, 0)));
+            int remainingQuota = p.quota - assignedCount.get(p.name);
 
-            int canTake = Math.min(idxList.size(), p.quota - assignedCount.get(p.name));
-            for (int k = 0; k < canTake; k++) {
-                int i = idxList.get(k);
-                assigned[i] = p.name;
+            boolean assignedContiguous = false;
+            Segment toAdd = null;
+            Iterator<Segment> it = p.segments.iterator();
+            while (it.hasNext()) {
+                Segment seg = it.next();
+                if (seg.length >= remainingQuota) {
+                    boolean canAssignAll = true;
+                    for (int i = seg.start; i < seg.start + remainingQuota; i++) {
+                        if (p.bits.charAt(i) != '1' || assigned[i] != null) {
+                            canAssignAll = false;
+                            break;
+                        }
+                        if (p.priorityMap.getOrDefault(i, 0) < -50) { // 임계값 조정 가능
+                            canAssignAll = false;
+                            break;
+                        }
+                    }
+                    if (canAssignAll) {
+                        System.out.println("[" + p.name + "] 연속 할당: " + seg.start + " ~ " + (seg.start + remainingQuota - 1));
+                        for (int i = seg.start; i < seg.start + remainingQuota; i++) {
+                            assigned[i] = p.name;
+                        }
+                        assignedCount.put(p.name, assignedCount.get(p.name) + remainingQuota);
+                        if (seg.length > remainingQuota) {
+                            toAdd = new Segment(seg.start + remainingQuota, seg.length - remainingQuota);
+                        }
+                        it.remove();
+                        assignedContiguous = true;
+                        break;
+                    }
+                }
             }
-            assignedCount.put(p.name, assignedCount.get(p.name) + canTake);
+            if (toAdd != null) {
+                p.segments.add(toAdd);
+            }
+            if (assignedContiguous) {
+                if (assignedCount.get(p.name) < p.quota && !p.segments.isEmpty()) {
+                    pq.offer(p);
+                }
+                continue;
+            }
 
-            // 남은 segment 조각이 있으면 재삽입
-            int taken = canTake;
-            if (seg.length > taken) {
-                p.segments.add(new Segment(seg.start + taken, seg.length - taken));
-            }
-            if (assignedCount.get(p.name) < p.quota && !p.segments.isEmpty()) {
-                pq.offer(p);
+            if (!p.segments.isEmpty()) {
+                Segment seg = p.segments.poll();
+                List<Integer> idxList = new ArrayList<>();
+                for (int i = seg.start; i < seg.start + seg.length; i++) {
+                    if (p.bits.charAt(i) == '1' && assigned[i] == null)
+                        idxList.add(i);
+                }
+                idxList.sort(Comparator.comparingInt((Integer idx) -> -p.priorityMap.getOrDefault(idx, 0)));
+
+                int canTake = Math.min(idxList.size(), remainingQuota);
+                for (int k = 0; k < canTake; k++) {
+                    int i = idxList.get(k);
+                    assigned[i] = p.name;
+                }
+                assignedCount.put(p.name, assignedCount.get(p.name) + canTake);
+
+                int taken = canTake;
+                if (seg.length > taken) {
+                    p.segments.add(new Segment(seg.start + taken, seg.length - taken));
+                }
+                if (assignedCount.get(p.name) < p.quota && !p.segments.isEmpty()) {
+                    pq.offer(p);
+                }
             }
         }
 
-        // 4. 남은 슬롯 보완: priority → quota 작은 사람 우선
         for (int i = 0; i < totalSlots; i++) {
             if (assigned[i] != null) continue;
             String best = null;
@@ -160,13 +242,18 @@ public class ScheduleOptimizerService {
             }
         }
 
-        // 5. 결과 생성
+        System.out.println("==== 최종 할당 ====");
+        for (int i = 0; i < totalSlots; i++) {
+            System.out.println(i + ": " + assigned[i]);
+        }
+
         List<Assignment> result = new ArrayList<>(totalSlots);
         for (int i = 0; i < totalSlots; i++) {
             result.add(new Assignment(slots.get(i), assigned[i]));
         }
         return result;
     }
+
 
     /**
      * 30분 단위 bits → 1시간 단위 slotBits 변환
@@ -189,62 +276,80 @@ public class ScheduleOptimizerService {
     }
 
     /**
-     * 각 1시간 slot 별 priority score 계산
+     * 각 1시간 slot 별 priority score 계산 + hasLecture 로그
      */
-    private Map<Integer, Integer> computePriorityBits(String slotBits, int days, int hoursPerDay) {
+    private Map<Integer, Integer> computePriorityBits(
+            String slotBits,
+            int days,
+            int hoursPerDay,
+            boolean considerLectureGap,
+            boolean considerTravelTime,
+            String lectureBits,
+            int startHour
+    ) {
         Map<Integer, Integer> priority = new HashMap<>();
         for (int day = 0; day < days; day++) {
             int base = day * hoursPerDay;
-            boolean hasClass = false;
-            for (int h = 0; h < hoursPerDay; h++) {
-                if (slotBits.charAt(base + h) == '0') {
-                    hasClass = true;
-                    break;
+            boolean hasLecture = false;
+
+            // --- [hasLecture 로그] ---
+            StringBuilder lecBitsOfDay = new StringBuilder();
+            for (int h = 0; h < hoursPerDay * 2; h++) {
+                char bit = lectureBits.charAt(day * hoursPerDay * 2 + h);
+                lecBitsOfDay.append(bit);
+                if (bit == '0') {
+                    hasLecture = true;
                 }
             }
+            System.out.printf("day=%d, lectureBits=%s, hasLecture=%s\n", day, lecBitsOfDay, hasLecture);
+
             for (int h = 0; h < hoursPerDay; h++) {
                 int slotIdx = base + h;
                 int p = 0;
                 if (slotBits.charAt(slotIdx) == '1') {
-                    p += hasClass ? 100 : -100;
-                    if ((h > 0 && slotBits.charAt(base + h - 1) == '0')
-                            || (h + 1 < hoursPerDay && slotBits.charAt(base + h + 1) == '0')) {
-                        p -= 20;
+                    if (considerLectureGap) {
+                        p += hasLecture ? 100 : -500;
                     }
-                    boolean isBetweenClasses = false;
-                    if (h > 0 && h + 1 < hoursPerDay
-                            && slotBits.charAt(base + h - 1) == '0'
-                            && slotBits.charAt(base + h + 1) == '0') {
-                        isBetweenClasses = true;
-                    }
-                    if (isBetweenClasses) {
-                        p += 10;
+                    if (considerTravelTime) {
+                        int blockStart = day * hoursPerDay * 2 + h * 2;
+                        if (blockStart - 1 >= 0 && lectureBits.charAt(blockStart - 1) == '1') {
+                            p -= 50;
+                        }
                     }
                 }
+                // --- 각 slot별 priority 출력 ---
+                int hour = startHour + h;
+                System.out.printf("  [priority] slotIdx=%d (요일%d %02d:00) = %d\n", slotIdx, day, hour, p);
+
                 priority.put(slotIdx, p);
             }
         }
         return priority;
     }
 
+
     /**
      * 1로 연속된 구간(segment) 추출, 내림차순(긴 구간 우선)
      */
-    private static List<Segment> extractSegments(String slotBits, int S) {
+    private static List<Segment> extractSegments(String slotBits, int days, int hours) {
         List<Segment> segs = new ArrayList<>();
-        int idx = 0;
-        while (idx < S) {
-            if (slotBits.charAt(idx) == '1') {
-                int start = idx;
-                while (idx < S && slotBits.charAt(idx) == '1') idx++;
-                segs.add(new Segment(start, idx - start));
-            } else {
-                idx++;
+        for (int day = 0; day < days; day++) {
+            int base = day * hours;
+            int idx = base;
+            while (idx < base + hours) {
+                if (slotBits.charAt(idx) == '1') {
+                    int start = idx;
+                    while (idx < base + hours && slotBits.charAt(idx) == '1') idx++;
+                    segs.add(new Segment(start, idx - start));
+                } else {
+                    idx++;
+                }
             }
         }
         segs.sort(Comparator.comparingInt((Segment s) -> -s.length));
         return segs;
     }
+
 
     public record TimeSlot(int day, int hourIndex, LocalTime start, LocalTime end) {}
     public record Assignment(TimeSlot slot, String assignee) {}
