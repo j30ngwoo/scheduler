@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalTime;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -36,7 +38,7 @@ public class Schedule {
     private Integer maxHoursPerParticipant;
 
     @OneToMany(mappedBy = "schedule", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Availability> availabilities = new ArrayList<>();
+    private List<Availability> availabilities;
 
     @PrePersist
     public void generateCode() {

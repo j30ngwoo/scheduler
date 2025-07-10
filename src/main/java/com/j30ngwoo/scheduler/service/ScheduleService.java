@@ -5,10 +5,12 @@ import com.j30ngwoo.scheduler.common.exception.ErrorCode;
 import com.j30ngwoo.scheduler.domain.Schedule;
 import com.j30ngwoo.scheduler.domain.User;
 import com.j30ngwoo.scheduler.dto.ScheduleCreateRequest;
+import com.j30ngwoo.scheduler.dto.ScheduleResponseDto;
 import com.j30ngwoo.scheduler.repository.ScheduleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -17,29 +19,35 @@ public class ScheduleService {
 
     private final ScheduleRepository scheduleRepository;
 
-    public Schedule createSchedule(ScheduleCreateRequest request, User owner) {
+    public ScheduleResponseDto createSchedule(ScheduleCreateRequest request, User owner) {
         Schedule schedule = Schedule.builder()
                 .title(request.title())
                 .startHour(request.startHour())
                 .endHour(request.endHour())
                 .owner(owner)
                 .maxHoursPerParticipant(request.maxHoursPerParticipant())
+                .availabilities(new ArrayList<>())
                 .build();
 
-        return scheduleRepository.save(schedule);
+        Schedule savedSchedule = scheduleRepository.save(schedule);
+        return ScheduleResponseDto.from(savedSchedule);
     }
 
-    public List<Schedule> getSchedulesByUser(User owner) {
-        return scheduleRepository.findAllByOwner(owner);
+    public List<ScheduleResponseDto> getSchedulesByUser(User owner) {
+        return scheduleRepository.findAllByOwner(owner).stream()
+                .map(ScheduleResponseDto::from)
+                .toList();
     }
 
-    public Schedule getScheduleByCode(String code) {
-        return scheduleRepository.findByCode(code)
+    public ScheduleResponseDto getScheduleByCode(String code) {
+        Schedule schedule = scheduleRepository.findByCode(code)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT_VALUE));
+        return ScheduleResponseDto.from(schedule);
     }
 
     public void deleteSchedule(String code, User owner) {
-        Schedule schedule = getScheduleByCode(code);
+        Schedule schedule = scheduleRepository.findByCode(code)
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT_VALUE));
         if (!schedule.getOwner().equals(owner)) {
             throw new AppException(ErrorCode.FORBIDDEN);
         }
