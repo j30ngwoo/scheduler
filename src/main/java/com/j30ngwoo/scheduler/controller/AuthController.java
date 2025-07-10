@@ -28,6 +28,9 @@ public class AuthController {
     @Value("${auth.kakao.redirect-uri}")
     private String redirectUri;
 
+    @Value("${app.root-domain}")
+    private String appRootDomain;
+
     private final KakaoOAuthService kakaoOAuthService;
     private final AuthService authService;
 
@@ -52,7 +55,7 @@ public class AuthController {
     public ResponseEntity<Void> kakaoLogin(@RequestParam String code) {
         KakaoLoginResponse response = kakaoOAuthService.handleKakaoLoginCallback(code);
         
-        String frontendCallback = "https://scheduler.j30ngwoo.site/login/callback?accessToken=" + response.accessToken();
+        String frontendCallback = appRootDomain + "/login/callback?accessToken=" + response.accessToken();
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.SET_COOKIE, response.refreshTokenCookie().toString())
                 .location(URI.create(frontendCallback))
