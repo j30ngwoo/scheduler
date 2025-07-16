@@ -22,11 +22,7 @@ public class ScheduleOptimizerService {
     /**
      * 해당 code 스케쥴의 최적 값 게산
      */
-    public List<Assignment> optimize(
-            String code,
-            boolean considerLectureGap,
-            boolean considerTravelTime
-    ) {
+    public List<Assignment> optimize(String code, boolean considerLectureGap) {
         Schedule schedule = scheduleRepository.findByCode(code)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT_VALUE));
 
@@ -63,7 +59,7 @@ public class ScheduleOptimizerService {
 
             lectureBitsMap.put(a.getParticipantName(), a.getAvailabilityBits());
             Map<Integer, Integer> pmap = computePriorityBits(
-                    slotBits, days, hours, considerLectureGap, considerTravelTime, a.getAvailabilityBits(), startHour
+                    slotBits, days, hours, considerLectureGap, a.getAvailabilityBits(), startHour
             );
             allPriority.put(a.getParticipantName(), pmap);
 
@@ -283,7 +279,6 @@ public class ScheduleOptimizerService {
             int days,
             int hoursPerDay,
             boolean considerLectureGap,
-            boolean considerTravelTime,
             String lectureBits,
             int startHour
     ) {
@@ -309,12 +304,6 @@ public class ScheduleOptimizerService {
                 if (slotBits.charAt(slotIdx) == '1') {
                     if (considerLectureGap) {
                         p += hasLecture ? 100 : -500;
-                    }
-                    if (considerTravelTime) {
-                        int blockStart = day * hoursPerDay * 2 + h * 2;
-                        if (blockStart - 1 >= 0 && lectureBits.charAt(blockStart - 1) == '1') {
-                            p -= 50;
-                        }
                     }
                 }
                 // --- 각 slot별 priority 출력 ---
