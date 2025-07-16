@@ -3,10 +3,6 @@ package com.j30ngwoo.scheduler.domain;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalTime;
-import com.fasterxml.jackson.annotation.JsonManagedReference;
-
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,7 +31,12 @@ public class Schedule {
     @ManyToOne(optional = false)
     private User owner;
 
+    private Integer minHoursPerParticipant;
+
     private Integer maxHoursPerParticipant;
+
+    @Column(nullable = false)
+    private Integer participantsPerSlot;
 
     @OneToMany(mappedBy = "schedule", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Availability> availabilities;
