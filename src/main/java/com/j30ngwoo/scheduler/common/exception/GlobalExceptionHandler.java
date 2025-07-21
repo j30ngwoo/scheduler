@@ -14,6 +14,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AppException.class)
     public ResponseEntity<ApiResponse<?>> handleAppException(AppException e, HttpServletRequest request) {
+        Logger logger = LoggerFactory.getLogger(getClass());
+        logger.error("AppException 발생", e);
+
         return ResponseEntity
                 .status(e.getStatus())
                 .body(ApiResponse.error(e.getCode(), e.getMessage()));
@@ -22,7 +25,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<?>> handleUnhandled(Exception e) {
         Logger logger = LoggerFactory.getLogger(getClass());
-        logger.error("서버 예기치 못한 오류 발생", e);
+        logger.error("예기치 못한 오류 발생", e);
 
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
