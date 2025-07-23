@@ -25,7 +25,9 @@ public class ScheduleService {
                 .startHour(request.startHour())
                 .endHour(request.endHour())
                 .owner(owner)
+                .minHoursPerParticipant(request.minHoursPerParticipant())
                 .maxHoursPerParticipant(request.maxHoursPerParticipant())
+                .participantsPerSlot(request.participantsPerSlot())
                 .availabilities(new ArrayList<>())
                 .build();
 

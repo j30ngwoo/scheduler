@@ -10,7 +10,9 @@ public record ScheduleResponseDto(
         Integer startHour,
         Integer endHour,
         UserDto owner,
+        Integer minHoursPerParticipant,
         Integer maxHoursPerParticipant,
+        Integer participantsPerSlot,
         List<AvailabilityDto> availabilities
 ) {
     public static ScheduleResponseDto from(Schedule schedule) {
@@ -21,7 +23,9 @@ public record ScheduleResponseDto(
                 schedule.getStartHour(),
                 schedule.getEndHour(),
                 UserDto.from(schedule.getOwner()),
+                schedule.getMinHoursPerParticipant(),
                 schedule.getMaxHoursPerParticipant(),
+                schedule.getParticipantsPerSlot(),
                 schedule.getAvailabilities().stream()
                         .map(AvailabilityDto::from)
                         .toList()

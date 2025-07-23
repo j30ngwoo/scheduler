@@ -8,5 +8,7 @@ public record ScheduleCreateRequest(
         @NotBlank String title,
         @NotNull Integer startHour,
         @NotNull Integer endHour,
-        @Min(1) Integer maxHoursPerParticipant
+        Integer minHoursPerParticipant,
+        @Min(1) Integer maxHoursPerParticipant,
+        @NotNull Integer participantsPerSlot
 ) {}
