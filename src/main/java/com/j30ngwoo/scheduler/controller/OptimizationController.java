@@ -17,8 +17,11 @@ public class OptimizationController {
     @GetMapping
     public ApiResponse<List<ScheduleOptimizerService.Assignment>> optimize(
             @PathVariable String code,
-            @RequestParam(name = "considerLectureGap", required = false, defaultValue = "false") boolean considerLectureGap
+            @RequestParam(name = "isLectureDayWorkPriority", required = false, defaultValue = "false") boolean isLectureDayWorkPriority,
+            @RequestParam(name = "applyTravelTimeBuffer", required = false, defaultValue = "false") boolean applyTravelTimeBuffer
     ) {
-        return ApiResponse.success(optimizerService.optimize(code, considerLectureGap));
+        return ApiResponse.success(
+                optimizerService.optimize(code, isLectureDayWorkPriority, applyTravelTimeBuffer)
+        );
     }
 }
