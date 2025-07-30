@@ -19,289 +19,172 @@ public class ScheduleOptimizerService {
     private final ScheduleRepository scheduleRepository;
     private final AvailabilityRepository availabilityRepository;
 
-    public List<Assignment> optimize(String code, boolean isLectureDayWorkPriority, boolean applyTravelTimeBuffer) {
-        // 스케줄 정보 조회
+    public List<Assignment> optimize(
+            String code,
+            boolean isLectureDayWorkPriority,
+            boolean applyTravelTimeBuffer
+    ) {
         Schedule schedule = scheduleRepository.findByCode(code)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT_VALUE));
 
         int startHour = schedule.getStartHour();
         int endHour = schedule.getEndHour();
-        int hours = endHour - startHour;
-        int days = 5; // 월~금
-        int totalSlots = hours * days;
+        int hoursPerDay = endHour - startHour;
+        int days = 5;
+        int totalSlots = hoursPerDay * days;
 
-        // slot 정보 생성 (요일, 시간, 실제 시각)
+        // slot 정보 생성
         List<TimeSlot> slots = new ArrayList<>(totalSlots);
         for (int day = 0; day < days; day++) {
-            for (int h = 0; h < hours; h++) {
-                int slotStartHour = startHour + h;
-                int slotEndHour = slotStartHour + 1;
-                LocalTime slotStart = LocalTime.of(slotStartHour, 0);
-                LocalTime slotEnd = LocalTime.of(slotEndHour, 0);
-                slots.add(new TimeSlot(day, h, slotStart, slotEnd));
+            for (int h = 0; h < hoursPerDay; h++) {
+                slots.add(new TimeSlot(day, h,
+                        LocalTime.of(startHour + h, 0),
+                        LocalTime.of(startHour + h + 1, 0)
+                ));
             }
         }
 
-        // 참가자별 가능시간 및 priority 계산
+        // 참가자별 가능한 slot 계산, ParticipantInfo 생성
+        List<ParticipantInfo> participants = new ArrayList<>();
         List<Availability> availList = availabilityRepository.findAllBySchedule(schedule);
-        int P = availList.size();
-        int base = totalSlots / P, extra = totalSlots % P;
-
-        Map<String, String> slotBitsMap = new HashMap<>();
-        Map<String, Map<Integer, Integer>> allPriority = new HashMap<>();
-
         for (Availability a : availList) {
-            // [이동 시간 고려] 옵션 적용: bits 가공
+            String name = a.getParticipantName();
             String bits = a.getAvailabilityBits();
+            System.out.println("[" + name + "] 버퍼 전 bits: " + bits);
             if (applyTravelTimeBuffer) {
-                bits = applyBuffer(bits, days, hours);
+                bits = applyBuffer(bits, days, hoursPerDay);
+                System.out.println("[" + name + "] 버퍼 적용 후 bits: " + bits);
             }
-            String slotBits = toSlotBits(bits, days, hours);
-            slotBitsMap.put(a.getParticipantName(), slotBits);
+            String slotBits = toSlotBits(bits, days, hoursPerDay);
+            System.out.println("[" + name + "] 원본 bits: " + bits + ", length: " + bits.length());
+            System.out.println("[" + name + "] 변환된 slotBits: " + slotBits + ", length: " + slotBits.length());
+            for (int i = 0; i < slotBits.length(); i++) {
+                if (slotBits.charAt(i) == '1') {
+                    TimeSlot ts = slots.get(i);
+                    System.out.println("    [" + name + "] 가능 slot: " + i + " (" + ts.day + "/" + ts.hourIndex + ", " + ts.start + "~" + ts.end + ")");
+                }
+            }
 
-            Map<Integer, Integer> pmap = computePriorityBits(
-                    slotBits, days, hours, isLectureDayWorkPriority, bits, startHour
-            );
-            allPriority.put(a.getParticipantName(), pmap);
-        }
-
-        // 참가자별 min/max quota, segment, priority 세팅
-        List<Participant> participants = new ArrayList<>();
-        for (int i = 0; i < availList.size(); i++) {
-            Availability a = availList.get(i);
+            System.out.println("[" + name + "] slotBits: " + slotBits);
+            List<Integer> possibleSlots = new ArrayList<>();
+            for (int i = 0; i < slotBits.length(); i++) {
+                if (slotBits.charAt(i) == '1') {
+                    possibleSlots.add(i);
+                    TimeSlot ts = slots.get(i);
+                    System.out.println("    [" + name + "] 가능 slot: " + i + " (" + ts.day + "/" + ts.hourIndex + ", " + ts.start + "~" + ts.end + ")");
+                }
+            }
             int minQuota = schedule.getMinHoursPerParticipant() != null ? schedule.getMinHoursPerParticipant() : 0;
-            int maxQuota = schedule.getMaxHoursPerParticipant() != null
-                    ? schedule.getMaxHoursPerParticipant()
-                    : base + (i < extra ? 1 : 0);
-
-            String slotBits = slotBitsMap.get(a.getParticipantName());
-            Map<Integer, Integer> pmap = allPriority.get(a.getParticipantName());
-
-            // 연속 가능한 구간(segment) 추출
-            List<Segment> segs = extractSegments(slotBits, days, hours);
-
-            participants.add(new Participant(
-                    a.getParticipantName(), slotBits, minQuota, maxQuota, new LinkedList<>(segs), pmap
-            ));
+            int maxQuota = schedule.getMaxHoursPerParticipant() != null ? schedule.getMaxHoursPerParticipant() : totalSlots;
+            participants.add(new ParticipantInfo(name, slotBits, minQuota, maxQuota, possibleSlots));
+            System.out.println("[" + name + "] minQuota=" + minQuota + ", maxQuota=" + maxQuota + ", 할당기회=" + possibleSlots.size());
         }
 
-        // 각 slot별로 배정된 참가자 이름 저장
-        List<String>[] assigned = new ArrayList[totalSlots];
-        for (int i = 0; i < totalSlots; i++) assigned[i] = new ArrayList<>();
+        // 할당 기회가 적은 사람부터 오름차순 정렬
+        participants.sort(Comparator.comparingInt(p -> p.possibleSlots.size()));
 
-        // 참가자별 할당된 slot 수 카운트
-        Map<String, Integer> assignedCount = new HashMap<>();
+        // slot별 배정 현황
+        List<List<String>> slotAssignments = new ArrayList<>(totalSlots);
+        for (int i = 0; i < totalSlots; i++) slotAssignments.add(new ArrayList<>());
 
-        // 우선순위 큐(할당 순서 결정)
-        PriorityQueue<Participant> pq = new PriorityQueue<>((p1, p2) -> {
-            // 1. segment 내 slot의 최소 priority를 비교, 더 큰 값 우선
-            int p1BestPri = p1.segments.stream()
-                    .mapToInt(seg -> {
-                        int minPri = Integer.MAX_VALUE;
-                        for (int i = seg.start; i < seg.start + seg.length; i++) {
-                            minPri = Math.min(minPri, p1.priorityMap.getOrDefault(i, 0));
-                        }
-                        return minPri;
-                    }).max().orElse(Integer.MIN_VALUE);
-
-            int p2BestPri = p2.segments.stream()
-                    .mapToInt(seg -> {
-                        int minPri = Integer.MAX_VALUE;
-                        for (int i = seg.start; i < seg.start + seg.length; i++) {
-                            minPri = Math.min(minPri, p2.priorityMap.getOrDefault(i, 0));
-                        }
-                        return minPri;
-                    }).max().orElse(Integer.MIN_VALUE);
-
-            if (p1BestPri != p2BestPri) return Integer.compare(p2BestPri, p1BestPri);
-
-            // 2. 가장 긴 segment 길이 비교
-            int s1 = p1.segments.isEmpty() ? 0 : p1.segments.peek().length;
-            int s2 = p2.segments.isEmpty() ? 0 : p2.segments.peek().length;
-            if (s1 != s2) return Integer.compare(s2, s1);
-
-            // 3. 현재까지 할당 비율(작은 쪽 우선)
-            double q1 = (double) assignedCount.getOrDefault(p1.name, 0) / p1.maxQuota;
-            double q2 = (double) assignedCount.getOrDefault(p2.name, 0) / p2.maxQuota;
-            if (q1 != q2) return Double.compare(q1, q2);
-
-            // 4. 마지막 tie-break: 이름순
-            return p1.name.compareTo(p2.name);
-        });
-
-        // 각 참가자를 큐에 초기 offer
-        for (Participant p : participants) {
-            assignedCount.put(p.name, 0);
-            if (!p.segments.isEmpty()) pq.offer(p);
-        }
-
-        // 메인 할당 루프
-        while (!pq.isEmpty()) {
-            Participant p = pq.poll();
-            if (assignedCount.get(p.name) >= p.maxQuota || p.segments.isEmpty()) continue;
-
-            int remainingQuota = p.maxQuota - assignedCount.get(p.name);
-
-            // 연속된 구간(segment)이 quota만큼 할당 가능한지 시도
-            boolean assignedContiguous = false;
-            Segment toAdd = null;
-            Iterator<Segment> it = p.segments.iterator();
-            while (it.hasNext()) {
-                Segment seg = it.next();
-                if (seg.length >= remainingQuota) {
-                    boolean canAssignAll = true;
-                    for (int i = seg.start; i < seg.start + remainingQuota; i++) {
-                        if (p.bits.charAt(i) != '1' || assigned[i].size() >= schedule.getParticipantsPerSlot()) {
-                            canAssignAll = false;
-                            break;
-                        }
-                        if (p.priorityMap.getOrDefault(i, 0) < -50) {
-                            canAssignAll = false;
-                            break;
-                        }
-                    }
-                    if (canAssignAll) {
-                        for (int i = seg.start; i < seg.start + remainingQuota; i++) {
-                            assigned[i].add(p.name);
-                        }
-                        assignedCount.put(p.name, assignedCount.get(p.name) + remainingQuota);
-                        if (seg.length > remainingQuota) {
-                            toAdd = new Segment(seg.start + remainingQuota, seg.length - remainingQuota);
-                        }
-                        it.remove();
-                        assignedContiguous = true;
+        // 1차: 연속 구간(전체) 긴 것부터, 인원 꽉 차지 않을 때까지 우선 배정
+        for (ParticipantInfo pi : participants) {
+            int assigned = 0;
+            System.out.println("[참가자 " + pi.name + "] [할당기회: " + pi.possibleSlots.size() + "] [1차 배정 시작] (maxQuota=" + pi.maxQuota + ")");
+            List<Segment> segments = extractSegmentsGlobal(
+                    pi.slotBits, slotAssignments, schedule.getParticipantsPerSlot()
+            );
+            System.out.print("    [extractSegmentsGlobal] segments: ");
+            for (Segment s : segments) System.out.print("[start=" + s.start + ",len=" + s.length + "] ");
+            System.out.println();
+            segments.sort(Comparator.comparingInt((Segment s) -> -s.length));
+            for (Segment seg : segments) {
+                System.out.println("    [segment] start=" + seg.start + ", length=" + seg.length);
+                for (int i = 0; i < seg.length; i++) {
+                    int slotIdx = seg.start + i;
+                    TimeSlot ts = slots.get(slotIdx);
+                    if (assigned >= pi.maxQuota) {
+                        System.out.println("    [할당종료] quota 도달 (누적:" + assigned + ")");
                         break;
                     }
+                    if (slotAssignments.get(slotIdx).size() >= schedule.getParticipantsPerSlot()) {
+                        System.out.println("      [slot " + slotIdx + " (" + ts.day + "/" + ts.hourIndex + ")] 인원 가득 (skip)");
+                        continue;
+                    }
+                    slotAssignments.get(slotIdx).add(pi.name);
+                    assigned++;
+                    System.out.println("      [1차배정] " + pi.name + " => slot(" + ts.day + "/" + ts.hourIndex + ") " +
+                            ts.start + "~" + ts.end + ", 누적:" + assigned);
                 }
+                if (assigned >= pi.maxQuota) break;
             }
-            if (toAdd != null) p.segments.add(toAdd);
-            if (assignedContiguous) {
-                if (assignedCount.get(p.name) < p.maxQuota && !p.segments.isEmpty()) pq.offer(p);
-                continue;
-            }
-
-            // 연속 할당 불가시 segment별로 가능한 slot만 배정
-            while (!p.segments.isEmpty()) {
-                Segment seg = p.segments.poll();
-                List<Integer> idxList = new ArrayList<>();
-                for (int i = seg.start; i < seg.start + seg.length; i++) {
-                    if (p.bits.charAt(i) == '1' && assigned[i].size() < schedule.getParticipantsPerSlot())
-                        idxList.add(i);
-                }
-                if (idxList.isEmpty()) {
-                    continue;
-                }
-                // priority가 높은 slot부터 우선 배정
-                idxList.sort(Comparator.comparingInt((Integer idx) -> -p.priorityMap.getOrDefault(idx, 0)));
-
-                int canTake = Math.min(idxList.size(), remainingQuota);
-                for (int k = 0; k < canTake; k++) {
-                    int i = idxList.get(k);
-                    assigned[i].add(p.name);
-                }
-                assignedCount.put(p.name, assignedCount.get(p.name) + canTake);
-
-                int taken = canTake;
-                if (seg.length > taken) {
-                    p.segments.add(new Segment(seg.start + taken, seg.length - taken));
-                }
-                if (assignedCount.get(p.name) < p.maxQuota && !p.segments.isEmpty()) pq.offer(p);
-                break;
-            }
+            pi.assignedCount = assigned;
+            System.out.println("[1차배정요약] " + pi.name + " 최종 배정: " + assigned + "개 (maxQuota: " + pi.maxQuota + ")");
         }
 
-        // slot별로 남은 자리가 있을 때 quota 여유 참가자 중에서 추가 배정
-        for (int i = 0; i < totalSlots; i++) {
-            while (assigned[i].size() < schedule.getParticipantsPerSlot()) {
-                String best = null;
-                int bestPriority = Integer.MIN_VALUE;
-                int minAssigned = Integer.MAX_VALUE;
-                for (Participant p : participants) {
-                    if (assignedCount.get(p.name) < p.maxQuota && p.bits.charAt(i) == '1') {
-                        if (assigned[i].contains(p.name)) continue;
-                        int prio = p.priorityMap.getOrDefault(i, 0);
-                        int cnt = assignedCount.get(p.name);
-                        if (prio > bestPriority || (prio == bestPriority && cnt < minAssigned)) {
-                            bestPriority = prio;
-                            minAssigned = cnt;
-                            best = p.name;
-                        }
-                    }
+        // 2차: quota 못 채운 참가자 위주로 남은 slot 채우기
+        for (int slotIdx = 0; slotIdx < totalSlots; slotIdx++) {
+            final int currentSlotIdx = slotIdx;
+            while (slotAssignments.get(slotIdx).size() < schedule.getParticipantsPerSlot()) {
+                // quota 미달 + 배정 가능 + 아직 이 slot에 안 배정된 인원만 후보
+                List<ParticipantInfo> candidates = new ArrayList<>();
+                for (ParticipantInfo pi : participants) {
+                    if (pi.assignedCount >= pi.maxQuota) continue;
+                    if (pi.slotBits.charAt(slotIdx) != '1') continue;
+                    if (slotAssignments.get(slotIdx).contains(pi.name)) continue;
+                    candidates.add(pi);
                 }
-                if (best != null) {
-                    assigned[i].add(best);
-                    assignedCount.put(best, assignedCount.get(best) + 1);
-                } else {
+                if (candidates.isEmpty()) {
+                    System.out.println("  [slot " + slotIdx + "] 후보 없음 (skip)");
                     break;
                 }
-            }
-        }
+                // 후보자 출력
+                System.out.print("  [slot " + slotIdx + "] 후보자: ");
+                for (ParticipantInfo c : candidates) System.out.print(c.name + "(assigned:" + c.assignedCount + ") ");
+                System.out.println();
 
-        // 최소 quota 미달 참가자 후처리 (slot 교환 시도)
-        List<Participant> underQuota = participants.stream()
-                .filter(p -> assignedCount.get(p.name) < p.minQuota)
-                .toList();
-
-        for (Participant p : underQuota) {
-            int need = p.minQuota - assignedCount.get(p.name);
-            for (int i = 0; i < totalSlots && need > 0; i++) {
-                if (p.bits.charAt(i) != '1') continue;
-                if (assigned[i].contains(p.name)) continue;
-
-                String candidateToReplace = null;
-                int bestScore = Integer.MIN_VALUE;
-
-                for (String other : assigned[i]) {
-                    if (other.equals(p.name)) continue;
-
-                    Participant donor = participants.stream().filter(pp -> pp.name.equals(other)).findFirst().orElse(null);
-                    if (donor == null) continue;
-
-                    int donorAssigned = assignedCount.get(donor.name);
-                    if (donorAssigned <= donor.minQuota) continue;
-
-                    int myPrio = p.priorityMap.getOrDefault(i, 0);
-                    int donorPrio = donor.priorityMap.getOrDefault(i, 0);
-
-                    int score = myPrio - donorPrio;
-                    if (score > bestScore) {
-                        bestScore = score;
-                        candidateToReplace = donor.name;
+                // 우선순위: 1. quota 적게 받은 사람 2. 수업 있는 날 옵션 3. 연속성 4. 이름순
+                candidates.sort((a, b) -> {
+                    int cmp = Integer.compare(a.assignedCount, b.assignedCount);
+                    if (cmp != 0) return cmp;
+                    if (isLectureDayWorkPriority) {
+                        boolean aLecture = hasLecture(a, currentSlotIdx, days, hoursPerDay);
+                        boolean bLecture = hasLecture(b, currentSlotIdx, days, hoursPerDay);
+                        if (aLecture && !bLecture) return -1;
+                        if (!aLecture && bLecture) return 1;
                     }
-                }
-
-                if (candidateToReplace != null) {
-                    assigned[i].remove(candidateToReplace);
-                    assignedCount.put(candidateToReplace, assignedCount.get(candidateToReplace) - 1);
-
-                    assigned[i].add(p.name);
-                    assignedCount.put(p.name, assignedCount.get(p.name) + 1);
-                    need--;
-                }
+                    int aCont = isContiguousAssigned(slotAssignments, currentSlotIdx, a.name, days, hoursPerDay) ? -1 : 0;
+                    int bCont = isContiguousAssigned(slotAssignments, currentSlotIdx, b.name, days, hoursPerDay) ? -1 : 0;
+                    if (aCont != bCont) return aCont - bCont;
+                    return a.name.compareTo(b.name);
+                });
+                ParticipantInfo picked = candidates.get(0);
+                TimeSlot ts = slots.get(slotIdx);
+                slotAssignments.get(slotIdx).add(picked.name);
+                picked.assignedCount++;
+                System.out.println("    [2차배정] " + picked.name + " => slot(" + ts.day + "/" + ts.hourIndex + ") " +
+                        ts.start + "~" + ts.end + ", 누적:" + picked.assignedCount);
             }
         }
 
-        // quota 미달자 발생 시 예외 처리
-        for (Participant p : participants) {
-            if (assignedCount.get(p.name) < p.minQuota) {
-                throw new AppException(ErrorCode.INVALID_INPUT_VALUE);
-            }
+        for (ParticipantInfo pi : participants) {
+            System.out.println("[최종배정] " + pi.name + " : " + pi.assignedCount + "개 배정됨 (maxQuota: " + pi.maxQuota + ")");
         }
 
-        // 최종 결과 리스트 반환
         List<Assignment> result = new ArrayList<>();
-        for (int i = 0; i < totalSlots; i++) {
-            for (String name : assigned[i]) {
-                result.add(new Assignment(slots.get(i), name));
+        for (int idx = 0; idx < totalSlots; idx++) {
+            for (String name : slotAssignments.get(idx)) {
+                result.add(new Assignment(slots.get(idx), name));
             }
         }
         return result;
     }
 
-    // 버퍼 적용 로직 (앞뒤 1칸도 '0' 처리)
-    private static String applyBuffer(String bits, int days, int hours) {
+    // 이동시간 고려
+    private static String applyBuffer(String bits, int days, int hoursPerDay) {
         char[] arr = bits.toCharArray();
-        int slotsPerDay = hours * 2;
+        char[] result = Arrays.copyOf(arr, arr.length);
+        int slotsPerDay = hoursPerDay * 2;
         for (int day = 0; day < days; day++) {
             int base = day * slotsPerDay;
             for (int i = 0; i < slotsPerDay; i++) {
@@ -309,17 +192,17 @@ public class ScheduleOptimizerService {
                 if (arr[idx] == '0') {
                     // 앞
                     int prev = idx - 1;
-                    if (prev >= base && arr[prev] == '1') arr[prev] = '0';
+                    if (prev >= base) result[prev] = '0';
                     // 뒤
                     int next = idx + 1;
-                    if (next < base + slotsPerDay && arr[next] == '1') arr[next] = '0';
+                    if (next < base + slotsPerDay) result[next] = '0';
                 }
             }
         }
-        return new String(arr);
+        return new String(result);
     }
 
-    // availability_bits를 slot별 '1','0'로 변환
+    // half-hour bits → slot별 1/0 변환
     private static String toSlotBits(String bits, int days, int hours) {
         StringBuilder sb = new StringBuilder();
         for (int day = 0; day < days; day++) {
@@ -336,65 +219,59 @@ public class ScheduleOptimizerService {
         return sb.toString();
     }
 
-    // slot별 priority 값 계산
-    private Map<Integer, Integer> computePriorityBits(
-            String slotBits,
-            int days,
-            int hoursPerDay,
-            boolean considerLectureGap,
-            String lectureBits,
-            int startHour
-    ) {
-        Map<Integer, Integer> priority = new HashMap<>();
-        for (int day = 0; day < days; day++) {
-            int base = day * hoursPerDay;
-            boolean hasLecture = false;
-
-            for (int h = 0; h < hoursPerDay * 2; h++) {
-                char bit = lectureBits.charAt(day * hoursPerDay * 2 + h);
-                if (bit == '0') hasLecture = true;
-            }
-
-            for (int h = 0; h < hoursPerDay; h++) {
-                int slotIdx = base + h;
-                int p = 0;
-                if (slotBits.charAt(slotIdx) == '1') {
-                    if (considerLectureGap) {
-                        p += hasLecture ? 100 : -500;
-                    }
-                }
-                priority.put(slotIdx, p);
-            }
-        }
-        return priority;
-    }
-
-    // 연속 가능한 구간(segment) 추출
-    private static List<Segment> extractSegments(String slotBits, int days, int hours) {
+    // 전체 slotBits에서 연속 구간 추출
+    private static List<Segment> extractSegmentsGlobal(
+            String bits, List<List<String>> slotAssignments, int maxPerSlot) {
         List<Segment> segs = new ArrayList<>();
-        for (int day = 0; day < days; day++) {
-            int base = day * hours;
-            int idx = base;
-            while (idx < base + hours) {
-                if (slotBits.charAt(idx) == '1') {
-                    int start = idx;
-                    while (idx < base + hours && slotBits.charAt(idx) == '1') idx++;
-                    segs.add(new Segment(start, idx - start));
-                } else {
-                    idx++;
-                }
+        int len = bits.length();
+        int idx = 0;
+        while (idx < len) {
+            // 해당 slot이 진짜 가능한지 (bits=1 and 인원 미만)
+            if (bits.charAt(idx) == '1' && slotAssignments.get(idx).size() < maxPerSlot) {
+                int start = idx;
+                while (
+                        idx < len &&
+                                bits.charAt(idx) == '1' &&
+                                slotAssignments.get(idx).size() < maxPerSlot
+                ) idx++;
+                segs.add(new Segment(start, idx - start));
+            } else {
+                idx++;
             }
         }
-        segs.sort(Comparator.comparingInt((Segment s) -> -s.length));
         return segs;
     }
 
-    // 시간대 정보
-    public record TimeSlot(int day, int hourIndex, LocalTime start, LocalTime end) {}
-    // 할당 결과 정보
-    public record Assignment(TimeSlot slot, String assignee) {}
-    // 내부용 참가자 구조
-    private record Participant(String name, String bits, int minQuota, int maxQuota, Queue<Segment> segments, Map<Integer, Integer> priorityMap) {}
-    // 연속 가능한 구간(segment)
+
+    // 수업 있는 날 옵션
+    private static boolean hasLecture(ParticipantInfo p, int slotIdx, int days, int hoursPerDay) {
+        int day = slotIdx / hoursPerDay;
+        int start = day * hoursPerDay;
+        for (int i = start; i < start + hoursPerDay; i++) {
+            if (p.slotBits.charAt(i) == '0') return true;
+        }
+        return false;
+    }
+
+    // 연속 배정 여부(직전/직후)
+    private static boolean isContiguousAssigned(List<List<String>> slotAssignments, int slotIdx, String name, int days, int hoursPerDay) {
+        int prev = slotIdx - 1;
+        int next = slotIdx + 1;
+        return (prev >= 0 && slotAssignments.get(prev).contains(name)) ||
+                (next < slotAssignments.size() && slotAssignments.get(next).contains(name));
+    }
+
+    private static class ParticipantInfo {
+        String name;
+        String slotBits; // slot별 가능여부 ('1','0')
+        int minQuota, maxQuota;
+        List<Integer> possibleSlots;
+        int assignedCount = 0;
+        ParticipantInfo(String n, String b, int min, int max, List<Integer> possibleSlots) {
+            name = n; slotBits = b; minQuota = min; maxQuota = max; this.possibleSlots = possibleSlots;
+        }
+    }
     private record Segment(int start, int length) {}
+    public record TimeSlot(int day, int hourIndex, LocalTime start, LocalTime end) {}
+    public record Assignment(TimeSlot slot, String assignee) {}
 }
