@@ -5,6 +5,7 @@ import com.j30ngwoo.scheduler.common.exception.ErrorCode;
 import com.j30ngwoo.scheduler.domain.Schedule;
 import com.j30ngwoo.scheduler.domain.User;
 import com.j30ngwoo.scheduler.dto.ScheduleCreateRequest;
+import com.j30ngwoo.scheduler.dto.ScheduleOptionUpdateRequest;
 import com.j30ngwoo.scheduler.dto.ScheduleResponseDto;
 import com.j30ngwoo.scheduler.repository.ScheduleRepository;
 import lombok.RequiredArgsConstructor;
@@ -54,5 +55,19 @@ public class ScheduleService {
             throw new AppException(ErrorCode.FORBIDDEN);
         }
         scheduleRepository.delete(schedule);
+    }
+
+    public void updateOptions(String code, ScheduleOptionUpdateRequest request) {
+        Schedule schedule = scheduleRepository.findByCode(code)
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT_VALUE));
+
+        if (request.minHoursPerParticipant() != null)
+            schedule.setMinHoursPerParticipant(request.minHoursPerParticipant());
+        if (request.maxHoursPerParticipant() != null)
+            schedule.setMaxHoursPerParticipant(request.maxHoursPerParticipant());
+        if (request.participantsPerSlot() != null)
+            schedule.setParticipantsPerSlot(request.participantsPerSlot());
+
+        scheduleRepository.save(schedule);
     }
 }

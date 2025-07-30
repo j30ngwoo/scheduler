@@ -92,7 +92,7 @@ public class ScheduleOptimizerService {
             int assigned = 0;
             System.out.println("[참가자 " + pi.name + "] [할당기회: " + pi.possibleSlots.size() + "] [1차 배정 시작] (maxQuota=" + pi.maxQuota + ")");
             List<Segment> segments = extractSegmentsGlobal(
-                    pi.slotBits, slotAssignments, schedule.getParticipantsPerSlot()
+                    pi.slotBits, slotAssignments, schedule.getParticipantsPerSlot(), days, hoursPerDay
             );
             System.out.print("    [extractSegmentsGlobal] segments: ");
             for (Segment s : segments) System.out.print("[start=" + s.start + ",len=" + s.length + "] ");
@@ -221,26 +221,28 @@ public class ScheduleOptimizerService {
 
     // 전체 slotBits에서 연속 구간 추출
     private static List<Segment> extractSegmentsGlobal(
-            String bits, List<List<String>> slotAssignments, int maxPerSlot) {
+            String bits, List<List<String>> slotAssignments, int maxPerSlot, int days, int hoursPerDay) {
         List<Segment> segs = new ArrayList<>();
-        int len = bits.length();
-        int idx = 0;
-        while (idx < len) {
-            // 해당 slot이 진짜 가능한지 (bits=1 and 인원 미만)
-            if (bits.charAt(idx) == '1' && slotAssignments.get(idx).size() < maxPerSlot) {
-                int start = idx;
-                while (
-                        idx < len &&
-                                bits.charAt(idx) == '1' &&
-                                slotAssignments.get(idx).size() < maxPerSlot
-                ) idx++;
-                segs.add(new Segment(start, idx - start));
-            } else {
-                idx++;
+        for (int day = 0; day < days; day++) {
+            int base = day * hoursPerDay;
+            int idx = base;
+            while (idx < base + hoursPerDay) {
+                if (bits.charAt(idx) == '1' && slotAssignments.get(idx).size() < maxPerSlot) {
+                    int start = idx;
+                    while (
+                            idx < base + hoursPerDay &&
+                                    bits.charAt(idx) == '1' &&
+                                    slotAssignments.get(idx).size() < maxPerSlot
+                    ) idx++;
+                    segs.add(new Segment(start, idx - start));
+                } else {
+                    idx++;
+                }
             }
         }
         return segs;
     }
+
 
 
     // 수업 있는 날 옵션
