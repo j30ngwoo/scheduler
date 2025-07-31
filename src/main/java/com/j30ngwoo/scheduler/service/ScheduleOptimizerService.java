@@ -87,7 +87,7 @@ public class ScheduleOptimizerService {
         List<List<String>> slotAssignments = new ArrayList<>(totalSlots);
         for (int i = 0; i < totalSlots; i++) slotAssignments.add(new ArrayList<>());
 
-        // 1차: 연속 구간(전체) 긴 것부터, 인원 꽉 차지 않을 때까지 우선 배정
+        // 1차 배정
         for (ParticipantInfo pi : participants) {
             int assigned = 0;
             System.out.println("[참가자 " + pi.name + "] [할당기회: " + pi.possibleSlots.size() + "] [1차 배정 시작] (maxQuota=" + pi.maxQuota + ")");
@@ -97,7 +97,15 @@ public class ScheduleOptimizerService {
             System.out.print("    [extractSegmentsGlobal] segments: ");
             for (Segment s : segments) System.out.print("[start=" + s.start + ",len=" + s.length + "] ");
             System.out.println();
-            segments.sort(Comparator.comparingInt((Segment s) -> -s.length));
+            segments.sort((s1, s2) -> {
+                if (isLectureDayWorkPriority) {
+                    boolean s1IsLectureDay = isLectureDayForSegment(s1, pi, days, hoursPerDay);
+                    boolean s2IsLectureDay = isLectureDayForSegment(s2, pi, days, hoursPerDay);
+                    if (s1IsLectureDay && !s2IsLectureDay) return -1;
+                    if (!s1IsLectureDay && s2IsLectureDay) return 1;
+                }
+                return Integer.compare(s2.length, s1.length);
+            });
             for (Segment seg : segments) {
                 System.out.println("    [segment] start=" + seg.start + ", length=" + seg.length);
                 for (int i = 0; i < seg.length; i++) {
@@ -243,7 +251,17 @@ public class ScheduleOptimizerService {
         return segs;
     }
 
-
+    private static boolean isLectureDayForSegment(Segment seg, ParticipantInfo p, int days, int hoursPerDay) {
+        int day = seg.start / hoursPerDay;
+        int dayStart = day * hoursPerDay;
+        int dayEnd = dayStart + hoursPerDay;
+        for (int j = dayStart; j < dayEnd; j++) {
+            if (p.slotBits.charAt(j) == '0') {
+                return true; // 이 요일은 수업 있는 날!
+            }
+        }
+        return false; // 이 요일은 수업 없는 날
+    }
 
     // 수업 있는 날 옵션
     private static boolean hasLecture(ParticipantInfo p, int slotIdx, int days, int hoursPerDay) {
