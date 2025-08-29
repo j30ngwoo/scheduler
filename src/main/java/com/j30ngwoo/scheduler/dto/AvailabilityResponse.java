@@ -2,13 +2,13 @@ package com.j30ngwoo.scheduler.dto;
 
 import com.j30ngwoo.scheduler.domain.Availability;
 
-public record AvailabilityDto(
+public record AvailabilityResponse(
         Long id,
         String participantName,
         String availabilityBits
 ) {
-    public static AvailabilityDto from(Availability availability) {
-        return new AvailabilityDto(
+    public static AvailabilityResponse from(Availability availability) {
+        return new AvailabilityResponse(
                 availability.getId(),
                 availability.getParticipantName(),
                 availability.getAvailabilityBits()

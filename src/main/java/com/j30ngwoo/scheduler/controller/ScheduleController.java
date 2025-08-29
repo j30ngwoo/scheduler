@@ -2,13 +2,10 @@ package com.j30ngwoo.scheduler.controller;
 
 import com.j30ngwoo.scheduler.common.response.ApiResponse;
 import com.j30ngwoo.scheduler.config.resolver.CurrentUser;
-import com.j30ngwoo.scheduler.domain.Schedule;
 import com.j30ngwoo.scheduler.domain.User;
 import com.j30ngwoo.scheduler.dto.ScheduleCreateRequest;
-import com.j30ngwoo.scheduler.dto.ScheduleOptimizeRequest;
 import com.j30ngwoo.scheduler.dto.ScheduleOptionUpdateRequest;
-import com.j30ngwoo.scheduler.dto.ScheduleResponseDto;
-import com.j30ngwoo.scheduler.service.ScheduleOptimizerService;
+import com.j30ngwoo.scheduler.dto.ScheduleResponse;
 import com.j30ngwoo.scheduler.service.ScheduleService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,17 +21,17 @@ public class ScheduleController {
     private final ScheduleService scheduleService;
 
     @PostMapping
-    public ApiResponse<ScheduleResponseDto> createSchedule(@RequestBody @Valid ScheduleCreateRequest request, @CurrentUser User currentUser) {
+    public ApiResponse<ScheduleResponse> createSchedule(@RequestBody @Valid ScheduleCreateRequest request, @CurrentUser User currentUser) {
         return ApiResponse.success(scheduleService.createSchedule(request, currentUser));
     }
 
     @GetMapping
-    public ApiResponse<List<ScheduleResponseDto>> getMySchedules(@CurrentUser User currentUser) {
+    public ApiResponse<List<ScheduleResponse>> getMySchedules(@CurrentUser User currentUser) {
         return ApiResponse.success(scheduleService.getSchedulesByUser(currentUser));
     }
 
     @GetMapping("/{code}")
-    public ApiResponse<ScheduleResponseDto> getScheduleByCode(@PathVariable String code) {
+    public ApiResponse<ScheduleResponse> getScheduleByCode(@PathVariable String code) {
         return ApiResponse.success(scheduleService.getScheduleByCode(code));
     }
 

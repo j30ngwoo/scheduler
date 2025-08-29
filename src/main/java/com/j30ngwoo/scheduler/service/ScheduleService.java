@@ -6,7 +6,7 @@ import com.j30ngwoo.scheduler.domain.Schedule;
 import com.j30ngwoo.scheduler.domain.User;
 import com.j30ngwoo.scheduler.dto.ScheduleCreateRequest;
 import com.j30ngwoo.scheduler.dto.ScheduleOptionUpdateRequest;
-import com.j30ngwoo.scheduler.dto.ScheduleResponseDto;
+import com.j30ngwoo.scheduler.dto.ScheduleResponse;
 import com.j30ngwoo.scheduler.repository.ScheduleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,7 +20,7 @@ public class ScheduleService {
 
     private final ScheduleRepository scheduleRepository;
 
-    public ScheduleResponseDto createSchedule(ScheduleCreateRequest request, User owner) {
+    public ScheduleResponse createSchedule(ScheduleCreateRequest request, User owner) {
         Schedule schedule = Schedule.builder()
                 .title(request.title())
                 .startHour(request.startHour())
@@ -33,19 +33,19 @@ public class ScheduleService {
                 .build();
 
         Schedule savedSchedule = scheduleRepository.save(schedule);
-        return ScheduleResponseDto.from(savedSchedule);
+        return ScheduleResponse.from(savedSchedule);
     }
 
-    public List<ScheduleResponseDto> getSchedulesByUser(User owner) {
+    public List<ScheduleResponse> getSchedulesByUser(User owner) {
         return scheduleRepository.findAllByOwner(owner).stream()
-                .map(ScheduleResponseDto::from)
+                .map(ScheduleResponse::from)
                 .toList();
     }
 
-    public ScheduleResponseDto getScheduleByCode(String code) {
+    public ScheduleResponse getScheduleByCode(String code) {
         Schedule schedule = scheduleRepository.findByCode(code)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT_VALUE));
-        return ScheduleResponseDto.from(schedule);
+        return ScheduleResponse.from(schedule);
     }
 
     public void deleteSchedule(String code, User owner) {

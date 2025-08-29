@@ -4,7 +4,7 @@ import com.j30ngwoo.scheduler.common.exception.AppException;
 import com.j30ngwoo.scheduler.common.exception.ErrorCode;
 import com.j30ngwoo.scheduler.domain.Availability;
 import com.j30ngwoo.scheduler.domain.Schedule;
-import com.j30ngwoo.scheduler.dto.AvailabilityDto;
+import com.j30ngwoo.scheduler.dto.AvailabilityResponse;
 import com.j30ngwoo.scheduler.dto.AvailabilitySubmitRequest;
 import com.j30ngwoo.scheduler.repository.AvailabilityRepository;
 import com.j30ngwoo.scheduler.repository.ScheduleRepository;
@@ -20,7 +20,7 @@ public class AvailabilityService {
     private final ScheduleRepository scheduleRepository;
     private final AvailabilityRepository availabilityRepository;
 
-    public AvailabilityDto submitAvailability(String code, AvailabilitySubmitRequest request) {
+    public AvailabilityResponse submitAvailability(String code, AvailabilitySubmitRequest request) {
         Schedule schedule = scheduleRepository.findByCode(code)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT_VALUE));
 
@@ -36,15 +36,15 @@ public class AvailabilityService {
                         .availabilityBits(request.availabilityBinary())
                         .build());
 
-        return AvailabilityDto.from(availabilityRepository.save(availability));
+        return AvailabilityResponse.from(availabilityRepository.save(availability));
     }
 
-    public List<AvailabilityDto> getAvailabilityList(String code) {
+    public List<AvailabilityResponse> getAvailabilityList(String code) {
         Schedule schedule = scheduleRepository.findByCode(code)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT_VALUE));
 
         return availabilityRepository.findAllBySchedule(schedule).stream()
-                .map(AvailabilityDto::from)
+                .map(AvailabilityResponse::from)
                 .toList();
     }
 

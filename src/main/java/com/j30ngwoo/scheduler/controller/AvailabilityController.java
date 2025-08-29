@@ -1,7 +1,7 @@
 package com.j30ngwoo.scheduler.controller;
 
 import com.j30ngwoo.scheduler.common.response.ApiResponse;
-import com.j30ngwoo.scheduler.dto.AvailabilityDto;
+import com.j30ngwoo.scheduler.dto.AvailabilityResponse;
 import com.j30ngwoo.scheduler.dto.AvailabilitySubmitRequest;
 import com.j30ngwoo.scheduler.service.AvailabilityService;
 import jakarta.validation.Valid;
@@ -18,7 +18,7 @@ public class AvailabilityController {
     private final AvailabilityService availabilityService;
 
     @PostMapping
-    public ApiResponse<AvailabilityDto> submit(
+    public ApiResponse<AvailabilityResponse> submit(
             @PathVariable String code,
             @RequestBody @Valid AvailabilitySubmitRequest request
     ) {
@@ -26,7 +26,7 @@ public class AvailabilityController {
     }
 
     @GetMapping
-    public ApiResponse<List<AvailabilityDto>> getAll(@PathVariable String code) {
+    public ApiResponse<List<AvailabilityResponse>> getAll(@PathVariable String code) {
         return ApiResponse.success(availabilityService.getAvailabilityList(code));
     }
 
