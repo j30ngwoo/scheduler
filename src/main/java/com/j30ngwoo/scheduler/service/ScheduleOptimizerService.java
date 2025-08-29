@@ -7,11 +7,13 @@ import com.j30ngwoo.scheduler.domain.Schedule;
 import com.j30ngwoo.scheduler.repository.AvailabilityRepository;
 import com.j30ngwoo.scheduler.repository.ScheduleRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalTime;
 import java.util.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ScheduleOptimizerService {
@@ -50,34 +52,34 @@ public class ScheduleOptimizerService {
         for (Availability a : availList) {
             String name = a.getParticipantName();
             String bits = a.getAvailabilityBits();
-            System.out.println("[" + name + "] 버퍼 전 bits: " + bits);
+            log.info("[{}] 버퍼 전 bits: {}", name, bits);
             if (applyTravelTimeBuffer) {
                 bits = applyBuffer(bits, days, hoursPerDay);
-                System.out.println("[" + name + "] 버퍼 적용 후 bits: " + bits);
+                log.info("[{}] 버퍼 적용 후 bits: {}", name, bits);
             }
             String slotBits = toSlotBits(bits, days, hoursPerDay);
-            System.out.println("[" + name + "] 원본 bits: " + bits + ", length: " + bits.length());
-            System.out.println("[" + name + "] 변환된 slotBits: " + slotBits + ", length: " + slotBits.length());
+            log.info("[{}] 원본 bits: {}, length: {}", name, bits, bits.length());
+            log.info("[{}] 변환된 slotBits: {}, length: {}", name, slotBits, slotBits.length());
             for (int i = 0; i < slotBits.length(); i++) {
                 if (slotBits.charAt(i) == '1') {
                     TimeSlot ts = slots.get(i);
-                    System.out.println("    [" + name + "] 가능 slot: " + i + " (" + ts.day + "/" + ts.hourIndex + ", " + ts.start + "~" + ts.end + ")");
+                    log.info("    [{}] 가능 slot: {} ({}/{}, {}~{})", name, i, ts.day, ts.hourIndex, ts.start, ts.end);
                 }
             }
 
-            System.out.println("[" + name + "] slotBits: " + slotBits);
+            log.info("[{}] slotBits: {}", name, slotBits);
             List<Integer> possibleSlots = new ArrayList<>();
             for (int i = 0; i < slotBits.length(); i++) {
                 if (slotBits.charAt(i) == '1') {
                     possibleSlots.add(i);
                     TimeSlot ts = slots.get(i);
-                    System.out.println("    [" + name + "] 가능 slot: " + i + " (" + ts.day + "/" + ts.hourIndex + ", " + ts.start + "~" + ts.end + ")");
+                    log.info("    [{}] 가능 slot: {} ({}/{}, {}~{})", name, i, ts.day, ts.hourIndex, ts.start, ts.end);
                 }
             }
             int minQuota = schedule.getMinHoursPerParticipant() != null ? schedule.getMinHoursPerParticipant() : 0;
             int maxQuota = schedule.getMaxHoursPerParticipant() != null ? schedule.getMaxHoursPerParticipant() : totalSlots;
             participants.add(new ParticipantInfo(name, slotBits, minQuota, maxQuota, possibleSlots));
-            System.out.println("[" + name + "] minQuota=" + minQuota + ", maxQuota=" + maxQuota + ", 할당기회=" + possibleSlots.size());
+            log.info("[{}] minQuota={}, maxQuota={}, 할당기회={}", name, minQuota, maxQuota, possibleSlots.size());
         }
 
         // 할당 기회가 적은 사람부터 오름차순 정렬
@@ -90,13 +92,12 @@ public class ScheduleOptimizerService {
         // 1차 배정
         for (ParticipantInfo pi : participants) {
             int assigned = 0;
-            System.out.println("[참가자 " + pi.name + "] [할당기회: " + pi.possibleSlots.size() + "] [1차 배정 시작] (maxQuota=" + pi.maxQuota + ")");
+            log.info("[참가자 {}] [할당기회: {}] [1차 배정 시작] (maxQuota={})", pi.name, pi.possibleSlots.size(), pi.maxQuota);
             List<Segment> segments = extractSegmentsGlobal(
                     pi.slotBits, slotAssignments, schedule.getParticipantsPerSlot(), days, hoursPerDay
             );
-            System.out.print("    [extractSegmentsGlobal] segments: ");
-            for (Segment s : segments) System.out.print("[start=" + s.start + ",len=" + s.length + "] ");
-            System.out.println();
+            log.info("    [extractSegmentsGlobal] segments: ");
+            for (Segment s : segments) log.info("[start={},len={}] ", s.start, s.length);
             segments.sort((s1, s2) -> {
                 if (isLectureDayWorkPriority) {
                     boolean s1IsLectureDay = isLectureDayForSegment(s1, pi, days, hoursPerDay);
@@ -107,27 +108,26 @@ public class ScheduleOptimizerService {
                 return Integer.compare(s2.length, s1.length);
             });
             for (Segment seg : segments) {
-                System.out.println("    [segment] start=" + seg.start + ", length=" + seg.length);
+                log.info("    [segment] start={}, length={}", seg.start, seg.length);
                 for (int i = 0; i < seg.length; i++) {
                     int slotIdx = seg.start + i;
                     TimeSlot ts = slots.get(slotIdx);
                     if (assigned >= pi.maxQuota) {
-                        System.out.println("    [할당종료] quota 도달 (누적:" + assigned + ")");
+                        log.info("    [할당종료] quota 도달 (누적:{})", assigned);
                         break;
                     }
                     if (slotAssignments.get(slotIdx).size() >= schedule.getParticipantsPerSlot()) {
-                        System.out.println("      [slot " + slotIdx + " (" + ts.day + "/" + ts.hourIndex + ")] 인원 가득 (skip)");
+                        log.info("      [slot {} ({}/{})] 인원 가득 (skip)", slotIdx, ts.day, ts.hourIndex);
                         continue;
                     }
                     slotAssignments.get(slotIdx).add(pi.name);
                     assigned++;
-                    System.out.println("      [1차배정] " + pi.name + " => slot(" + ts.day + "/" + ts.hourIndex + ") " +
-                            ts.start + "~" + ts.end + ", 누적:" + assigned);
+                    log.info("      [1차배정] {} => slot({}/{}) {}~{}, 누적:{}", pi.name, ts.day, ts.hourIndex, ts.start, ts.end, assigned);
                 }
                 if (assigned >= pi.maxQuota) break;
             }
             pi.assignedCount = assigned;
-            System.out.println("[1차배정요약] " + pi.name + " 최종 배정: " + assigned + "개 (maxQuota: " + pi.maxQuota + ")");
+            log.info("[1차배정요약] {} 최종 배정: {}개 (maxQuota: {})", pi.name, assigned, pi.maxQuota);
         }
 
         // 2차: quota 못 채운 참가자 위주로 남은 slot 채우기
@@ -143,13 +143,12 @@ public class ScheduleOptimizerService {
                     candidates.add(pi);
                 }
                 if (candidates.isEmpty()) {
-                    System.out.println("  [slot " + slotIdx + "] 후보 없음 (skip)");
+                    log.info("  [slot {}] 후보 없음 (skip)", slotIdx);
                     break;
                 }
                 // 후보자 출력
-                System.out.print("  [slot " + slotIdx + "] 후보자: ");
-                for (ParticipantInfo c : candidates) System.out.print(c.name + "(assigned:" + c.assignedCount + ") ");
-                System.out.println();
+                log.info("  [slot {}] 후보자: ", slotIdx);
+                for (ParticipantInfo c : candidates) log.info("{}(assigned:{}) ", c.name, c.assignedCount);
 
                 // 우선순위: 1. quota 적게 받은 사람 2. 수업 있는 날 옵션 3. 연속성 4. 이름순
                 candidates.sort((a, b) -> {
@@ -170,13 +169,12 @@ public class ScheduleOptimizerService {
                 TimeSlot ts = slots.get(slotIdx);
                 slotAssignments.get(slotIdx).add(picked.name);
                 picked.assignedCount++;
-                System.out.println("    [2차배정] " + picked.name + " => slot(" + ts.day + "/" + ts.hourIndex + ") " +
-                        ts.start + "~" + ts.end + ", 누적:" + picked.assignedCount);
+                log.info("    [2차배정] {} => slot({}/{}) {}~{}, 누적:{}", picked.name, ts.day, ts.hourIndex, ts.start, ts.end, picked.assignedCount);
             }
         }
 
         for (ParticipantInfo pi : participants) {
-            System.out.println("[최종배정] " + pi.name + " : " + pi.assignedCount + "개 배정됨 (maxQuota: " + pi.maxQuota + ")");
+            log.info("[최종배정] {} : {}개 배정됨 (maxQuota: {})", pi.name, pi.assignedCount, pi.maxQuota);
         }
 
         List<Assignment> result = new ArrayList<>();

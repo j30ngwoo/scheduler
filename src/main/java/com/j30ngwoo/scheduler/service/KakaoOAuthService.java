@@ -6,6 +6,7 @@ import com.j30ngwoo.scheduler.domain.User;
 import com.j30ngwoo.scheduler.dto.KakaoLoginResponse;
 import com.j30ngwoo.scheduler.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
@@ -17,6 +18,7 @@ import org.springframework.web.client.RestClient;
 import java.time.Duration;
 import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class KakaoOAuthService {
@@ -74,7 +76,7 @@ public class KakaoOAuthService {
                     .retrieve()
                     .body(Map.class);
 
-            System.out.println("카카오 토큰 응답 body: " + body); // DEBUG
+            log.info("카카오 토큰 응답 body: {}", body); // DEBUG
 
             if (body == null || !body.containsKey("access_token")) {
                 throw new AppException(ErrorCode.OAUTH_COMMUNICATION_FAILED);
@@ -82,7 +84,7 @@ public class KakaoOAuthService {
 
             return (String) body.get("access_token");
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("OAuth 서버 통신 실패", e);
             throw new AppException(ErrorCode.OAUTH_COMMUNICATION_FAILED);
         }
     }
@@ -107,11 +109,11 @@ public class KakaoOAuthService {
             Long id = ((Number) body.get("id")).longValue();
             String nickname = ((Map<String, Object>) body.get("properties")).get("nickname").toString();
 
-            System.out.println("nickname: " + nickname); //DEBUG
+            log.info("nickname: {}", nickname); //DEBUG
 
             return new KakaoUser(id, nickname);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("OAuth 서버 통신 실패", e);
             throw new AppException(ErrorCode.OAUTH_COMMUNICATION_FAILED);
         }
     }

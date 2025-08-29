@@ -40,6 +40,8 @@ dependencies {
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.springframework.security:spring-security-test")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+	implementation("ch.qos.logback:logback-classic:1.5.18")
+	implementation("org.slf4j:slf4j-api:2.0.16")
 }
 
 hibernate {
