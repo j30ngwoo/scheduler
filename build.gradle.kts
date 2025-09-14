@@ -42,6 +42,7 @@ dependencies {
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 	implementation("ch.qos.logback:logback-classic:1.5.18")
 	implementation("org.slf4j:slf4j-api:2.0.16")
+	runtimeOnly("com.h2database:h2")
 }
 
 hibernate {
