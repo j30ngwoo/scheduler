@@ -31,7 +31,8 @@ docker rm scheduler
 docker run -d -p 9003:8080 --name scheduler -e SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.h2.Driver -e SPRING_DATASOURCE_URL="jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL" -e SPRING_DATASOURCE_USERNAME=sa -e SPRING_DATASOURCE_PASSWORD= -e KAKAO_CLIENT_SECRET=dummy-secret -e JWT_SECRET=dummy-jwt-secret-1234567890-abcdefghijklmnopqrstuvwxyz scheduler:latest
 ```
 
-[http://localhost:9003/api/swagger-ui/index.html](http://localhost:9003/api/swagger-ui/index.html) Swagger UI 접속
+실행 후 Swagger UI 접속:
+[http://localhost:9003/api/swagger-ui/index.html](http://localhost:9003/api/swagger-ui/index.html) 
 
 ---
 ## 🔑 Key Features
@@ -107,5 +108,6 @@ docker run -d -p 9003:8080 --name scheduler -e SPRING_DATASOURCE_DRIVER_CLASS_NA
 
 
 ```
+
 
 
